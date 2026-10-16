@@ -1,0 +1,23 @@
+{
+  "tarif": {
+    "motor": {"id": 1, "jenis_kendaraan": "motor", "durasi_awal_menit": 120, "biaya_awal": 2000, "biaya_per_jam": 1000, "maks_per_hari": 10000, "biaya_menginap": 5000, "jam_batas_menginap": "00:00:00", "toleransi_menit": 0},
+    "motor_tol": {"id": 1, "jenis_kendaraan": "motor", "durasi_awal_menit": 120, "biaya_awal": 2000, "biaya_per_jam": 1000, "maks_per_hari": 10000, "biaya_menginap": 5000, "jam_batas_menginap": "00:00:00", "toleransi_menit": 10},
+    "mobil_batas22": {"id": 2, "jenis_kendaraan": "mobil", "durasi_awal_menit": 60, "biaya_awal": 5000, "biaya_per_jam": 3000, "maks_per_hari": 30000, "biaya_menginap": 15000, "jam_batas_menginap": "22:00:00", "toleransi_menit": 10},
+    "tanpa_maks": {"id": 3, "jenis_kendaraan": "mobil", "durasi_awal_menit": 60, "biaya_awal": 5000, "biaya_per_jam": 3000, "maks_per_hari": 0, "biaya_menginap": 0, "jam_batas_menginap": "00:00:00", "toleransi_menit": 0}
+  },
+  "cases": [
+    {"nama": "Contoh spesifikasi 08:00-14:30", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 14:30:00", "harapan": 7000},
+    {"nama": "Contoh spesifikasi + toleransi 10", "tarif": "motor_tol", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 14:30:00", "harapan": 7000},
+    {"nama": "Tepat 2 jam = biaya awal", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 10:00:00", "harapan": 2000},
+    {"nama": "2 jam 1 menit = +1 jam", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 10:01:00", "harapan": 3000},
+    {"nama": "Dalam toleransi gratis", "tarif": "motor_tol", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 08:09:59", "harapan": 0},
+    {"nama": "Kena maksimal harian", "tarif": "motor", "masuk": "2026-10-15 06:00:00", "keluar": "2026-10-15 23:00:00", "harapan": 10000},
+    {"nama": "Lewat tengah malam (2 hari + 1 malam)", "tarif": "motor", "masuk": "2026-10-15 23:00:00", "keluar": "2026-10-16 01:00:00", "harapan": 9000},
+    {"nama": "3 hari kalender, 2 malam", "tarif": "motor", "masuk": "2026-10-15 20:00:00", "keluar": "2026-10-17 09:00:00", "harapan": 33000},
+    {"nama": "Batas menginap 22:00", "tarif": "mobil_batas22", "masuk": "2026-10-15 18:00:00", "keluar": "2026-10-15 23:00:00", "harapan": 32000},
+    {"nama": "Tanpa maks, tanpa menginap", "tarif": "tanpa_maks", "masuk": "2026-10-15 00:00:00", "keluar": "2026-10-15 12:00:00", "harapan": 38000},
+    {"nama": "Plat khusus gratis", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 20:00:00", "khusus": {"tipe": "dinas"}, "harapan": 0},
+    {"nama": "Tanpa tiket + denda", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 09:00:00", "denda": 20000, "harapan": 22000},
+    {"nama": "Keluar < masuk dianggap 0", "tarif": "motor", "masuk": "2026-10-15 08:00:00", "keluar": "2026-10-15 07:00:00", "harapan": 0}
+  ]
+}

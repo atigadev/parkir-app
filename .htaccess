@@ -1,0 +1,11 @@
+Options -Indexes
+DirectoryIndex index.php index.html
+
+# Teruskan header Authorization ke PHP (dipakai API)
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+<FilesMatch "^(config\.php|config\.sample\.php|\.gitignore|README\.md)$">
+  Require all denied
+</FilesMatch>

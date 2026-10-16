@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ParkIt Petugas</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<section class="screen" id="s-login" hidden>
+  <form class="login" id="f-login" autocomplete="on">
+    <div class="login-brand"><span class="logo">P</span><h1>ParkIt</h1><p class="muted">Aplikasi petugas parkir</p></div>
+    <label class="field">Username<input name="username" autocomplete="username" autocapitalize="none" required></label>
+    <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn primary xl" type="submit">Masuk</button>
+    <p class="muted small center" id="login-net"></p>
+  </form>
+</section>
+
+<!-- ===================== PILIH POS ===================== -->
+<section class="screen" id="s-pos" hidden>
+  <div class="pad">
+    <p class="muted">Halo, <b id="pos-nama-petugas"></b></p>
+    <h2 class="h-big">Pilih pos untuk memulai shift</h2>
+    <form id="f-pos" class="stack">
+      <div class="pos-pick">
+        <label class="pos-card masuk"><input type="radio" name="pos" value="masuk" required>
+          <span class="pos-ic">⬇</span><b>Pos Masuk</b><small>Foto plat, cetak tiket</small></label>
+        <label class="pos-card keluar"><input type="radio" name="pos" value="keluar" required>
+          <span class="pos-ic">⬆</span><b>Pos Keluar</b><small>Scan tiket, terima bayar</small></label>
+      </div>
+      <label class="field">Nama pos / gerbang<input name="pos_nama" placeholder="mis. Gerbang Utara" maxlength="50"></label>
+      <button class="btn primary xl">Buka Shift</button>
+    </form>
+    <button class="btn ghost block" id="btn-logout-pos" style="margin-top:24px">Keluar akun</button>
+  </div>
+</section>
+
+<!-- ===================== APP (setelah shift dibuka) ===================== -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="tb-title"><b id="tb-pos"></b><small id="tb-petugas"></small></div>
+    <div class="chips">
+      <button class="chip" id="chip-net" type="button"></button>
+      <button class="chip warn" id="chip-sync" type="button" hidden></button>
+      <button class="chip" id="chip-print" type="button"></button>
+      <span class="chip" id="chip-bat" hidden></span>
+    </div>
+  </header>
+
+  <!-- POS MASUK -->
+  <section class="screen tab" id="s-masuk" hidden>
+    <div class="viewfinder" id="vf-masuk">
+      <video id="cam" playsinline muted autoplay></video>
+      <div class="vf-guide"><span>Arahkan ke plat nomor</span></div>
+      <div class="vf-msg" id="cam-msg" hidden></div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="radiogroup" aria-label="Jenis kendaraan" id="seg-jenis">
+        <button type="button" data-jenis="motor" class="on">🏍 Motor</button>
+        <button type="button" data-jenis="mobil">🚗 Mobil</button>
+      </div>
+      <div class="shutter-row">
+        <button type="button" class="btn ghost round" id="btn-manual" title="Ketik plat manual">⌨</button>
+        <button type="button" class="shutter" id="btn-foto" aria-label="Ambil foto"></button>
+        <label class="btn ghost round" title="Kamera bawaan">📷<input type="file" accept="image/*" capture="environment" id="file-foto" hidden></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- POS KELUAR -->
+  <section class="screen tab" id="s-keluar" hidden>
+    <div class="viewfinder qr" id="vf-keluar">
+      <div id="reader"></div>
+      <div class="vf-msg" id="scan-msg" hidden></div>
+    </div>
+    <div class="controls">
+      <form class="row" id="f-kode">
+        <input name="kode" placeholder="Kode tiket (bila QR rusak)" autocomplete="off" autocapitalize="none">
+        <button class="btn ghost">Cek</button>
+      </form>
+      <div class="row">
+        <label class="btn ghost grow">📷 Foto QR<input type="file" accept="image/*" capture="environment" id="file-qr" hidden></label>
+        <button type="button" class="btn warn grow" id="btn-tanpa-tiket">Tanpa tiket / cari plat</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIWAYAT -->
+  <section class="screen tab" id="s-riwayat" hidden>
+    <div class="pad">
+      <div class="row between"><h2>Riwayat perangkat ini</h2><span class="muted small">20 terakhir</span></div>
+      <div id="list-riwayat" class="list"></div>
+    </div>
+  </section>
+
+  <!-- SHIFT -->
+  <section class="screen tab" id="s-shift" hidden>
+    <div class="pad stack">
+      <div class="card">
+        <div class="row between"><h2>Shift berjalan</h2><button class="btn ghost sm" id="btn-refresh-shift" type="button">↻</button></div>
+        <div id="shift-info" class="kv"></div>
+      </div>
+      <form class="card stack" id="f-tutup">
+        <h2>Tutup shift</h2>
+        <label class="field">Uang cash yang disetor (Rp)<input name="setor" type="number" inputmode="numeric" min="0" step="500" required></label>
+        <div id="selisih-preview" class="muted"></div>
+        <label class="field">Catatan<input name="catatan" maxlength="255" placeholder="Opsional"></label>
+        <button class="btn danger xl">Tutup Shift</button>
+      </form>
+      <div class="card stack">
+        <h2>Printer</h2>
+        <label class="field">Mode cetak
+          <select id="sel-printer">
+            <option value="bluetooth">Bluetooth langsung (Chrome)</option>
+            <option value="rawbt">Aplikasi RawBT</option>
+            <option value="browser">Dialog cetak browser</option>
+            <option value="none">Tanpa cetak</option>
+          </select>
+        </label>
+        <div class="row"><button type="button" class="btn ghost grow" id="btn-pilih-printer">Hubungkan printer</button><button type="button" class="btn ghost grow" id="btn-tes-printer">Tes cetak</button></div>
+        <p class="muted small" id="printer-info"></p>
+      </div>
+      <div class="card stack">
+        <div class="row between"><h2>Sinkronisasi</h2><button type="button" class="btn ghost sm" id="btn-sync">Sinkron sekarang</button></div>
+        <div id="sync-info" class="muted small"></div>
+        <div id="sync-gagal" class="list"></div>
+      </div>
+      <button type="button" class="btn ghost block" id="btn-logout">Keluar akun</button>
+      <p class="muted small center">ParkIt PWA v1.0</p>
+    </div>
+  </section>
+
+  <nav class="tabbar">
+    <button type="button" data-tab="kerja" class="on"><span class="ti">◎</span><span id="tab-kerja-label">Kamera</span></button>
+    <button type="button" data-tab="riwayat"><span class="ti">☰</span>Riwayat<em class="badge" id="badge-cetak" hidden></em></button>
+    <button type="button" data-tab="shift"><span class="ti">◷</span>Shift</button>
+  </nav>
+</div>
+
+<!-- Lembar (bottom sheet) dinamis -->
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true"><div class="sheet-grip"></div><div id="sheet-body"></div></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div id="print-area" aria-hidden="true"></div>
+
+<script src="vendor/qrcode.js"></script>
+<script src="vendor/html5-qrcode.min.js"></script>
+<script src="js/tarif.js"></script>
+<script src="js/printer.js"></script>
+<script src="js/outbox.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
