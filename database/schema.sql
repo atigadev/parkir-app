@@ -152,4 +152,6 @@ INSERT IGNORE INTO pengaturan (kunci, nilai) VALUES
  ('ocr_timeout',     '3'),
  ('ocr_ambang',      '0.9'),
  ('retensi_foto_hari', '60'),
- ('footer_resi',     'Simpan tiket ini. Kehilangan tiket dikenakan denda.');
+ ('footer_resi',     'Simpan tiket ini dengan baik\nJangan tinggalkan tiket & barang berharga di kendaraan\nKehilangan/kerusakan barang bukan tanggung jawab pengelola'),
+ ('footer_struk',    'Terima kasih atas kunjungan Anda'),
+ ('telepon_lokasi',  '');

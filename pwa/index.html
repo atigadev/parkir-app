@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=3">
+<link rel="stylesheet" href="app.css?v=5">
 </head>
 <body>
 
@@ -83,7 +83,7 @@
     </div>
     <div class="controls">
       <form class="row" id="f-kode">
-        <input name="kode" placeholder="Kode tiket (bila QR rusak)" autocomplete="off" autocapitalize="none">
+        <input name="kode" placeholder="No. tiket bila QR rusak, mis. 6B95-A60D" autocomplete="off" autocapitalize="characters">
         <button class="btn ghost">Cek</button>
       </form>
       <div class="row">
@@ -125,6 +125,15 @@
             <option value="none">Tanpa cetak</option>
           </select>
         </label>
+        <label class="cek" id="opsi-gambar"><input type="checkbox" id="cek-gambar">
+          <span><b>Cetak sebagai gambar</b><small>Aktifkan bila hanya QR yang tercetak atau teks hilang/berantakan. Lewat Bluetooth langsung lebih lambat (±10–20 detik); paling cocok dengan RawBT.</small></span></label>
+        <label class="field" id="opsi-paket">Ukuran paket Bluetooth
+          <select id="sel-paket">
+            <option value="20">20 byte — aman untuk semua printer (disarankan)</option>
+            <option value="100">100 byte — lebih cepat</option>
+            <option value="180">180 byte — tercepat, bisa terpotong di printer murah</option>
+          </select>
+        </label>
         <div class="row"><button type="button" class="btn ghost grow" id="btn-pilih-printer">Hubungkan printer</button><button type="button" class="btn ghost grow" id="btn-tes-printer">Tes cetak</button></div>
         <p class="muted small" id="printer-info"></p>
       </div>
@@ -156,8 +165,9 @@
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
 <script src="js/tarif.js"></script>
-<script src="js/printer.js"></script>
+<script src="js/resi.js?v=5"></script>
+<script src="js/printer.js?v=5"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

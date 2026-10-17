@@ -82,6 +82,7 @@ function data_tiket(array $km): array
 {
     return [
         'id'          => $km['id'],
+        'no_tiket'    => no_tiket($km['id']),
         'kode_qr'     => $km['kode_qr'],
         'plat'        => $km['plat_nomor'],
         'jenis'       => $km['jenis_kendaraan'],
@@ -98,6 +99,11 @@ function data_resi_keluar(array $tk): array
 {
     return [
         'id'           => (int)$tk['id'],
+        'no_struk'     => no_struk((int)$tk['id'], $tk['waktu_keluar']),
+        'no_tiket'     => no_tiket($tk['kendaraan_masuk_id']),
+        'pos_masuk'    => $tk['pos_masuk'],
+        'pos_keluar'   => $tk['pos_keluar'] ?? null,
+        'denda'        => (int)$tk['denda'],
         'plat'         => $tk['plat_nomor'],
         'jenis'        => $tk['jenis_kendaraan'],
         'waktu_masuk'  => $tk['waktu_masuk'],
@@ -118,6 +124,8 @@ function konfigurasi_klien(): array
         'nama_lokasi'   => setting('nama_lokasi'),
         'alamat_lokasi' => setting('alamat_lokasi'),
         'footer_resi'   => setting('footer_resi'),
+        'footer_struk'  => setting('footer_struk', 'Terima kasih atas kunjungan Anda'),
+        'telepon_lokasi'=> setting('telepon_lokasi'),
         'qris_gambar'   => $qris ? base_url($qris) . '?v=' . @filemtime(APP_ROOT . '/' . $qris) : null,
         'qris_merchant' => setting('qris_nama_merchant'),
         'denda'         => ['motor' => denda_tanpa_tiket('motor'), 'mobil' => denda_tanpa_tiket('mobil')],
@@ -275,11 +283,18 @@ try {
         $in = input();
         $tanpaTiket = false;
         if ($r === 'keluar.scan') {
-            $urai = qr_urai((string)($in['kode'] ?? ''));
-            if (!$urai) gagal('QR tidak dikenali atau palsu.', 'qr_invalid');
-            $km = masuk_by_id($urai['id']);
-            if (!$km || !hash_equals($km['kode_qr'], trim((string)$in['kode']))) {
-                gagal($urai['offline'] ? 'Tiket offline ini belum tersinkron dari pos masuk.' : 'Tiket tidak terdaftar.', 'tidak_ditemukan', 404);
+            $kode = trim((string)($in['kode'] ?? ''));
+            if (preg_match('/^[0-9a-f]{4}-?[0-9a-f]{4}$/i', $kode)) {
+                // Nomor tiket diketik petugas (QR rusak/tidak terbaca)
+                $km = masuk_by_no_tiket($kode);
+                if (!$km) gagal('Nomor tiket ' . strtoupper($kode) . ' tidak ditemukan.', 'tidak_ditemukan', 404);
+            } else {
+                $urai = qr_urai($kode);
+                if (!$urai) gagal('QR tidak dikenali atau palsu.', 'qr_invalid');
+                $km = masuk_by_id($urai['id']);
+                if (!$km || !hash_equals($km['kode_qr'], $kode)) {
+                    gagal($urai['offline'] ? 'Tiket offline ini belum tersinkron dari pos masuk.' : 'Tiket tidak terdaftar.', 'tidak_ditemukan', 404);
+                }
             }
         } else {
             $km = masuk_by_id((string)($in['id'] ?? ''));

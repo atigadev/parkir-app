@@ -36,6 +36,18 @@ function uuid4(): string
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
 }
 
+/** Nomor tiket yang mudah dibaca/diketik: 8 karakter pertama UUID, mis. "6B95-A60D". */
+function no_tiket(string $id): string
+{
+    return strtoupper(substr($id, 0, 4) . '-' . substr($id, 4, 4));
+}
+
+/** Nomor struk keluar, mis. "S261017-000123". */
+function no_struk(int $id, string $waktuKeluar): string
+{
+    return 'S' . date('ymd', strtotime($waktuKeluar)) . '-' . str_pad((string)$id, 6, '0', STR_PAD_LEFT);
+}
+
 function is_uuid(string $s): bool
 {
     return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $s);

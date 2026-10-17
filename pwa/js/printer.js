@@ -4,6 +4,9 @@
  *  - rawbt     : kirim ESC/POS ke aplikasi RawBT (Android) lewat intent
  *  - browser   : dialog cetak browser (cadangan)
  * QR dicetak sebagai gambar raster (GS v 0) agar didukung printer murah.
+ *
+ * Opsi "cetak sebagai gambar" (bawaan: aktif) mengirim seluruh tiket sebagai satu gambar,
+ * sehingga teks tercetak di printer yang mengabaikan perintah teks/ukuran huruf ESC/POS.
  */
 (function (global) {
   'use strict';
@@ -47,7 +50,7 @@
     var q = qrcode(0, 'M');
     q.addData(data);
     q.make();
-    var n = q.getModuleCount(), quiet = 2, scale = dotsPerModule || Math.max(2, Math.min(8, Math.floor(300 / (n + quiet * 2))));
+    var n = q.getModuleCount(), quiet = 2, scale = dotsPerModule || Math.max(2, Math.min(8, Math.floor(240 / (n + quiet * 2))));
     var size = (n + quiet * 2) * scale;
     var bytesPerRow = Math.ceil(size / 8);
     this.align(1).push([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, bytesPerRow >> 8, size & 0xff, size >> 8]);
@@ -67,43 +70,63 @@
   Builder.prototype.bytes = function () { return new Uint8Array(this.b); };
 
   function pad(s, n) { while (s.length < n) s += ' '; return s; }
-  function rp(n) { return 'Rp' + Number(n || 0).toLocaleString('id-ID'); }
-  function tgl(s) { var d = Tarif.parse(s); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
 
-  function kepala(b, cfg) {
-    b.align(1).bold(true).size(1, 2).line((cfg.nama_lokasi || 'PARKIR').slice(0, LEBAR)).size(1, 1).bold(false);
-    if (cfg.alamat_lokasi) b.line(String(cfg.alamat_lokasi).slice(0, LEBAR * 2));
-    return b;
+  function bungkus(s, lebar) { return Resi.bungkus(s, lebar); }
+
+  /** Ubah canvas jadi perintah raster ESC/POS (GS v 0), dikirim per blok 96 baris agar buffer printer tidak penuh. */
+  function rasterDariCanvas(c) {
+    var w = c.width, h = c.height, bpr = Math.ceil(w / 8);
+    var px = c.getContext('2d').getImageData(0, 0, w, h).data;
+    var b = new Builder().align(0);
+    for (var y0 = 0; y0 < h; y0 += 96) {
+      var bh = Math.min(96, h - y0);
+      b.push([0x1d, 0x76, 0x30, 0x00, bpr & 0xff, bpr >> 8, bh & 0xff, bh >> 8]);
+      for (var y = y0; y < y0 + bh; y++) {
+        for (var bx = 0; bx < bpr; bx++) {
+          var byte = 0;
+          for (var bit = 0; bit < 8; bit++) {
+            var x = bx * 8 + bit;
+            if (x < w) {
+              var i = (y * w + x) * 4;
+              if (px[i] + px[i + 1] + px[i + 2] < 540) byte |= 0x80 >> bit; // abu-abu gelap ikut hitam agar huruf tidak putus
+            }
+          }
+          b.b.push(byte);
+        }
+      }
+    }
+    return b.feed(4).cut().bytes();
   }
 
-  /** Resi masuk: tiket berisi QR. */
-  function resiMasuk(t, cfg) {
-    var b = kepala(new Builder(), cfg);
-    b.rule().bold(true).line('TIKET MASUK' + (t.offline ? ' (OFFLINE)' : '')).bold(false);
-    b.size(2, 2).bold(true).line(t.plat).size(1, 1).bold(false);
-    b.line(String(t.jenis).toUpperCase());
-    b.qr(t.kode_qr);
-    b.align(0).pair('Masuk', tgl(t.waktu_masuk)).pair('Pos', String(t.pos_masuk || '').slice(0, 24)).pair('Petugas', String(t.petugas || '').slice(0, 22));
-    b.rule().align(1).line(cfg.footer_resi || 'Simpan tiket ini.');
-    var denda = cfg.denda && cfg.denda[t.jenis];
-    if (denda) b.line('Tiket hilang: denda ' + rp(denda));
-    return b.feed(3).cut().bytes();
-  }
-
-  /** Resi keluar dengan rincian biaya. */
-  function resiKeluar(r, cfg) {
-    var b = kepala(new Builder(), cfg);
-    b.rule().bold(true).line('RESI KELUAR' + (r.offline ? ' (OFFLINE)' : '')).bold(false);
-    b.size(2, 2).bold(true).line(r.plat || '-').size(1, 1).bold(false).line(String(r.jenis).toUpperCase());
-    b.align(0).rule().pair('Masuk', tgl(r.waktu_masuk)).pair('Keluar', tgl(r.waktu_keluar)).pair('Durasi', Tarif.durasiTeks(r.durasi_menit));
-    b.rule();
-    (r.rincian || []).forEach(function (x) { b.pair(String(x[0]).slice(0, 20), rp(x[1])); });
-    b.rule().bold(true).size(1, 2).pair('TOTAL', rp(r.total)).size(1, 1).bold(false);
-    b.pair('Bayar', String(r.metode).toUpperCase());
-    if (r.tanpa_tiket) b.line('Keluar tanpa tiket');
-    b.pair('Petugas', String(r.petugas || '').slice(0, 22));
-    b.rule().align(1).line('Terima kasih');
-    return b.feed(3).cut().bytes();
+  /** Render daftar baris dari Resi.masuk/keluar ke byte ESC/POS. */
+  function escpos(rows) {
+    var b = new Builder(), LBL = 10;
+    rows.forEach(function (r) {
+      switch (r[0]) {
+        case 'judul':
+          b.align(1).bold(true).size(1, 2);
+          bungkus(r[1], LEBAR).forEach(function (x) { b.line(x); });
+          b.size(1, 1).bold(false); break;
+        case 'tengah': case 'kecil':
+          b.align(1); bungkus(r[1], LEBAR).forEach(function (x) { b.line(x); }); break;
+        case 'tebal':
+          b.align(1).bold(true); bungkus(r[1], LEBAR).forEach(function (x) { b.line(x); }); b.bold(false); break;
+        case 'besar':
+          b.align(1).bold(true).size(2, 2); bungkus(r[1], LEBAR / 2).forEach(function (x) { b.line(x); }); b.size(1, 1).bold(false); break;
+        case 'kv':
+          b.align(0);
+          bungkus(r[2], LEBAR - LBL - 2).forEach(function (x, i) { b.line((i ? pad('', LBL) : pad(String(r[1]), LBL)) + (i ? '  ' : ': ') + x); });
+          break;
+        case 'lr': b.align(0).pair(String(r[1]).slice(0, LEBAR - String(r[2]).length - 1), r[2]); break;
+        case 'total': b.align(0).bold(true).size(1, 2).pair(r[1], r[2]).size(1, 1).bold(false); break;
+        case 'garis': b.align(0).rule('-'); break;
+        case 'garis2': b.align(0).rule('='); break;
+        case 'qr': b.qr(r[1]); break;
+        case 'poin':
+          b.align(0); bungkus(r[1], LEBAR - 2).forEach(function (x, i) { b.line((i ? '  ' : '- ') + x); }); break;
+      }
+    });
+    return b.feed(4).cut().bytes();
   }
 
   // ---------------------------------------------------------------- Bluetooth
@@ -115,6 +138,13 @@
   function notify() { listeners.forEach(function (f) { try { f(status()); } catch (e) {} }); }
   function mode() { try { return localStorage.getItem('printer_mode') || (navigator.bluetooth ? 'bluetooth' : 'browser'); } catch (e) { return 'browser'; } }
   function setMode(m) { try { localStorage.setItem('printer_mode', m); } catch (e) {} notify(); }
+  function opsi(k, bawaan) { try { var v = localStorage.getItem(k); return v === null ? bawaan : v; } catch (e) { return bawaan; } }
+  function setOpsi(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+  /** Cetak seluruh tiket sebagai gambar (bawaan: ya). */
+  // Bawaan: gambar untuk RawBT (Bluetooth klasik, cepat); teks untuk BLE (gambar ±40 KB terlalu lambat lewat paket 20 byte).
+  function sebagaiGambar() { return opsi('printer_gambar', mode() === 'rawbt' ? '1' : '0') === '1'; }
+  /** Ukuran paket Bluetooth (byte). 20 = aman untuk semua printer BLE. */
+  function ukuranPaket() { var n = parseInt(opsi('printer_paket', '20'), 10); return n > 0 ? n : 20; }
 
   function cariKarakteristik(server) {
     return server.getPrimaryServices().then(function (services) {
@@ -162,13 +192,16 @@
 
   function tulisBT(data) {
     return sambungUlang().then(function () {
-      var off = 0, CHUNK = 180;
+      // Printer BLE murah umumnya hanya menerima 20 byte per paket; paket lebih besar terpotong diam-diam
+      // (sebagian teks hilang). Jeda singkat tiap ±1 KB memberi waktu buffer printer mengosongkan diri.
+      var off = 0, CHUNK = ukuranPaket(), tanpaRespons = chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse;
       function step() {
         if (off >= data.length) return Promise.resolve();
         var part = data.slice(off, off + CHUNK);
         off += CHUNK;
-        var p = chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse ? chr.writeValueWithoutResponse(part) : chr.writeValue(part);
-        return p.then(function () { return new Promise(function (r) { setTimeout(r, 20); }); }).then(step);
+        var p = tanpaRespons ? chr.writeValueWithoutResponse(part) : chr.writeValue(part);
+        var jeda = off % 1024 < CHUNK ? 40 : (tanpaRespons ? 4 : 0);
+        return p.then(function () { return jeda ? new Promise(function (r) { setTimeout(r, jeda); }) : null; }).then(step);
       }
       return step();
     });
@@ -185,51 +218,51 @@
     return Promise.resolve();
   }
 
-  function htmlResi(jenis, d, cfg) {
-    var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
-    var h = '<div class="r-h"><b>' + e(cfg.nama_lokasi) + '</b><br>' + e(cfg.alamat_lokasi || '') + '</div><hr>';
-    if (jenis === 'masuk') {
-      var q = qrcode(0, 'M'); q.addData(d.kode_qr); q.make();
-      h += '<div class="r-c"><b>TIKET MASUK</b><div class="r-plat">' + e(d.plat) + '</div>' + e(String(d.jenis).toUpperCase()) +
-        '<div class="r-qr">' + q.createSvgTag({ cellSize: 4, margin: 2 }) + '</div></div>' +
-        '<table><tr><td>Masuk</td><td>' + e(tgl(d.waktu_masuk)) + '</td></tr><tr><td>Pos</td><td>' + e(d.pos_masuk) + '</td></tr><tr><td>Petugas</td><td>' + e(d.petugas) + '</td></tr></table><hr><div class="r-c">' + e(cfg.footer_resi) + '</div>';
-    } else {
-      h += '<div class="r-c"><b>RESI KELUAR</b><div class="r-plat">' + e(d.plat || '-') + '</div></div><table>' +
-        '<tr><td>Masuk</td><td>' + e(tgl(d.waktu_masuk)) + '</td></tr><tr><td>Keluar</td><td>' + e(tgl(d.waktu_keluar)) + '</td></tr>' +
-        '<tr><td>Durasi</td><td>' + e(Tarif.durasiTeks(d.durasi_menit)) + '</td></tr>' +
-        (d.rincian || []).map(function (x) { return '<tr><td>' + e(x[0]) + '</td><td>' + e(rp(x[1])) + '</td></tr>'; }).join('') +
-        '<tr class="r-tot"><td>TOTAL</td><td>' + e(rp(d.total)) + '</td></tr><tr><td>Bayar</td><td>' + e(String(d.metode).toUpperCase()) + '</td></tr></table><hr><div class="r-c">Terima kasih</div>';
-    }
-    return h;
-  }
-  function tulisBrowser(jenis, d, cfg) {
+  /**
+   * Dialog cetak browser: tiket dicetak sebagai satu gambar selebar kertas. Android sering
+   * mencetak halaman sebagai A4 lalu mengecilkannya ke 58 mm; dengan gambar 100% lebar,
+   * teks ikut membesar proporsional sehingga tetap terbaca (tidak hanya QR yang tercetak).
+   */
+  function tulisBrowser(rows) {
     var el = document.getElementById('print-area');
-    el.innerHTML = htmlResi(jenis, d, cfg);
-    window.print();
-    return Promise.resolve();
+    el.innerHTML = '<img class="cetak-img" alt="" src="' + Resi.canvas(rows, 576).toDataURL('image/png') + '">';
+    var img = el.querySelector('img');
+    return new Promise(function (res) {
+      function go() { window.print(); res(); }
+      if (img.complete) go(); else { img.onload = go; img.onerror = go; }
+    });
+  }
+
+  function kirim(rows) {
+    var m = mode();
+    if (m === 'none') return Promise.resolve();
+    if (m === 'browser') return tulisBrowser(rows);
+    var bytes = sebagaiGambar() ? rasterDariCanvas(Resi.canvas(rows, 384)) : escpos(rows);
+    if (m === 'rawbt') return tulisRawBT(bytes);
+    return tulisBT(bytes);
   }
 
   // ---------------------------------------------------------------- API publik
   /** Cetak; jenis = 'masuk' | 'keluar'. Menolak (reject) bila gagal agar pemanggil bisa mengantre. */
   function cetak(jenis, data, cfg) {
-    var m = mode();
-    if (m === 'none') return Promise.resolve();
-    if (m === 'browser') return tulisBrowser(jenis, data, cfg);
-    var bytes = jenis === 'masuk' ? resiMasuk(data, cfg) : resiKeluar(data, cfg);
-    if (m === 'rawbt') return tulisRawBT(bytes);
-    return tulisBT(bytes);
+    try {
+      return kirim(jenis === 'masuk' ? Resi.masuk(data, cfg) : Resi.keluar(data, cfg));
+    } catch (e) {
+      return Promise.reject(e);
+    }
   }
 
   function tesCetak(cfg) {
-    var b = kepala(new Builder(), cfg).rule().line('TES PRINTER').line(new Date().toLocaleString('id-ID')).qr('PK1-TES').feed(3).cut();
-    var m = mode();
-    if (m === 'rawbt') return tulisRawBT(b.bytes());
-    if (m === 'bluetooth') return tulisBT(b.bytes());
-    return tulisBrowser('masuk', { plat: 'TES', jenis: 'motor', kode_qr: 'PK1-TES', waktu_masuk: Tarif.fmt(new Date()), pos_masuk: '-', petugas: '-' }, cfg);
+    var rows = [['judul', (cfg && cfg.nama_lokasi) || 'PARKIR'], ['garis2'], ['tebal', 'TES PRINTER'],
+      ['tengah', new Date().toLocaleString('id-ID')], ['kv', 'Lebar', LEBAR + ' karakter'], ['garis'],
+      ['tengah', '12345678901234567890123456789012'], ['qr', 'PK1-TES'], ['tebal', 'Printer siap dipakai']];
+    return kirim(rows);
   }
 
   global.Printer = {
-    cetak: cetak, tesCetak: tesCetak, pilih: pilih, sambungUlang: sambungUlang,
-    status: status, mode: mode, setMode: setMode, onChange: function (f) { listeners.push(f); }
+    cetak: cetak, tesCetak: tesCetak, pilih: pilih, sambungUlang: sambungUlang, escpos: escpos, raster: rasterDariCanvas,
+    status: status, mode: mode, setMode: setMode, onChange: function (f) { listeners.push(f); },
+    sebagaiGambar: sebagaiGambar, setSebagaiGambar: function (v) { setOpsi('printer_gambar', v ? '1' : '0'); },
+    ukuranPaket: ukuranPaket, setUkuranPaket: function (n) { setOpsi('printer_paket', n); }
   };
 })(window);

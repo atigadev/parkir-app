@@ -291,6 +291,60 @@
     renderChips();
   }
 
+  /**
+   * Tampilkan bukti (tiket/struk) di layar seperti kertas aslinya, sekaligus mencetaknya.
+   * opsi.auto     : detik sebelum kembali otomatis setelah cetak berhasil (0 = tidak)
+   * opsi.cetak    : false = hanya tampilkan (dari Riwayat)
+   * opsi.onSelesai: dipanggil saat lembar ditutup
+   */
+  function tampilBukti(jenis, data, key, opsi) {
+    opsi = opsi || {};
+    var rows = jenis === 'masuk' ? Resi.masuk(data, S.config || {}) : Resi.keluar(data, S.config || {});
+    var el = bukaSheet('<div class="bukti-wrap" id="bukti-wrap">' + Resi.html(rows) + '</div>' +
+      '<div class="bukti-aksi"><div class="cetak-status" id="cetak-status"></div>' +
+      '<div class="row"><button class="btn ghost grow" id="b-cetak-ulang">🖨 Cetak ulang</button>' +
+      '<button class="btn primary grow" id="b-bukti-ok">Selesai</button></div></div>', opsi.onSelesai);
+    var st = $('#cetak-status', el), ok = $('#b-bukti-ok', el), timer = null, sisa = opsi.auto || 0;
+
+    function masihTerbuka() { return document.getElementById('b-bukti-ok') === ok; }
+    function batalAuto() { if (timer) { clearInterval(timer); timer = null; } ok.textContent = 'Selesai'; }
+    function mulaiAuto() {
+      if (!sisa || timer) return;
+      ok.textContent = 'Selesai (' + sisa + ')';
+      timer = setInterval(function () {
+        if (!masihTerbuka()) return clearInterval(timer);
+        if (--sisa <= 0) { clearInterval(timer); tutupSheet(); } else ok.textContent = 'Selesai (' + sisa + ')';
+      }, 1000);
+    }
+    function jalankanCetak() {
+      st.className = 'cetak-status'; st.innerHTML = '<span class="spin"></span> Mencetak…';
+      return cetak(jenis, data, key).then(function (berhasil) {
+        if (!masihTerbuka()) return;
+        if (berhasil) {
+          st.className = 'cetak-status ok';
+          st.textContent = Printer.mode() === 'none' ? 'Mode tanpa cetak — bukti hanya di layar' : '✓ Terkirim ke printer';
+          mulaiAuto();
+        } else {
+          st.className = 'cetak-status bad';
+          st.textContent = '✕ Gagal mencetak. Periksa printer, lalu tekan Cetak ulang.';
+          batalAuto();
+        }
+      });
+    }
+
+    $('#b-cetak-ulang', el).addEventListener('click', function () { batalAuto(); sisa = 0; jalankanCetak(); });
+    ok.addEventListener('click', tutupSheet);
+    // Petugas sedang membaca bukti: jangan tutup otomatis.
+    $('#bukti-wrap', el).addEventListener('pointerdown', function () { batalAuto(); sisa = 0; });
+    if (opsi.cetak === false) {
+      var x = load('riwayat', []).filter(function (r) { return r.key === key; })[0];
+      st.className = 'cetak-status ' + (x && x.belumCetak ? 'bad' : '');
+      st.textContent = x && x.belumCetak ? 'Belum tercetak' : 'Bukti tersimpan di perangkat ini';
+    } else {
+      jalankanCetak();
+    }
+  }
+
   function renderRiwayat() {
     var r = load('riwayat', []), el = $('#list-riwayat');
     if (!r.length) { el.innerHTML = '<div class="empty">Belum ada transaksi di perangkat ini.</div>'; return; }
@@ -302,14 +356,18 @@
         (masuk ? '' : '<b style="color:var(--text)">' + rp(d.total) + ' · ' + esc(String(d.metode).toUpperCase()) + '</b>') + '</div>' +
         '<div class="row">' + (x.belumCetak ? '<span class="tag bad">Belum tercetak</span>' : '') + (d.offline ? '<span class="tag warn">Offline</span>' : '') +
         (x.voidDiminta ? '<span class="tag bad">Void diminta</span>' : '') + '</div>' +
-        '<div class="row"><button class="btn ' + (x.belumCetak ? 'primary' : 'ghost') + ' sm grow" data-cetak="' + i + '">🖨 Cetak ulang</button>' +
+        '<div class="row"><button class="btn ghost sm grow" data-lihat="' + i + '">🧾 Lihat bukti</button>' +
+        '<button class="btn ' + (x.belumCetak ? 'primary' : 'ghost') + ' sm grow" data-cetak="' + i + '">🖨 Cetak ulang</button>' +
         (masuk && !d.offline && !x.voidDiminta ? '<button class="btn ghost sm" data-void="' + i + '">Minta void</button>' : '') + '</div></div>';
     }).join('');
   }
   $('#list-riwayat').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     var r = load('riwayat', []);
-    if (b.dataset.cetak) {
+    if (b.dataset.lihat) {
+      var z = r[+b.dataset.lihat];
+      tampilBukti(z.jenis, z.data, z.key, { cetak: false, onSelesai: renderRiwayat });
+    } else if (b.dataset.cetak) {
       var x = r[+b.dataset.cetak];
       cetak(x.jenis, x.data, x.key).then(function (ok) { if (ok) toast('Dicetak ulang', 'ok'); renderRiwayat(); });
     } else if (b.dataset.void) {
@@ -471,7 +529,7 @@
     var t = {
       id: id, kode_qr: 'PK1.' + id + '.' + (S.jenis === 'mobil' ? 'C' : 'M') + '.' + ts + '.OFF' + hexAcak(13),
       plat: plat, jenis: S.jenis, waktu_masuk: Tarif.fmt(waktu), pos_masuk: S.shift.pos_nama || 'Pos Masuk',
-      petugas: S.petugas.nama, status: 'parkir', offline: true
+      petugas: S.petugas.nama, status: 'parkir', offline: true, no_tiket: Resi.noTiket(id)
     };
     Outbox.tambah({
       uid: 'm-' + id, tipe: 'masuk', id: id, kode_qr: t.kode_qr, plat: plat, jenis: S.jenis, waktu_masuk: t.waktu_masuk,
@@ -485,8 +543,7 @@
     catatRiwayat({ key: key, jenis: 'masuk', data: t, belumCetak: true });
     tutupSheet();
     bunyi(true); getar(60);
-    toast((t.offline ? 'Tiket OFFLINE ' : 'Tiket ') + t.plat + ' — mencetak…', t.offline ? '' : 'ok');
-    cetak('masuk', t, key);
+    tampilBukti('masuk', t, key, { auto: 5 });
   }
 
   // ================================================================ POS KELUAR
@@ -558,6 +615,7 @@
   }
 
   function prosesKode(kode, fotoP) {
+    if (/^[0-9a-f]{4}-?[0-9a-f]{4}$/i.test(String(kode).trim())) return prosesNoTiket(String(kode).trim().toUpperCase(), fotoP);
     var u = urai(kode);
     if (!u) { bunyi(false); getar(300); toast('QR bukan tiket parkir ini', 'bad'); return setTimeout(lanjutScan, 1200); }
     api('keluar.scan', { body: { kode: u.kode }, timeout: 6000 }).then(function (d) {
@@ -576,6 +634,17 @@
         '<button class="btn warn xl" id="b-tt">Proses tanpa tiket / cari plat</button><button class="btn ghost" id="b-ok">Scan lagi</button></div>', lanjutScan);
       $('#b-ok').addEventListener('click', tutupSheet);
       $('#b-tt').addEventListener('click', function () { tutupSheet(); bukaCariPlat(''); });
+    });
+  }
+
+  /** Nomor tiket yang diketik petugas (QR rusak). Butuh koneksi ke server. */
+  function prosesNoTiket(no, fotoP) {
+    api('keluar.scan', { body: { kode: no }, timeout: 6000 }).then(function (d) {
+      tampilHasil(d, fotoP, false);
+    }).catch(function (e) {
+      bunyi(false); getar(300);
+      toast(e.network ? 'Cari dengan nomor tiket butuh koneksi. Scan QR-nya atau tunggu online.' : e.message, 'bad', 4000);
+      setTimeout(lanjutScan, 1500);
     });
   }
 
@@ -648,7 +717,7 @@
     $('#b-kembali', el).addEventListener('click', function () { S.sheetClose = null; tampilHasil(d, fotoP, offline); });
     $('#b-selesai', el).addEventListener('click', function () {
       if (uang.value && +uang.value < d.total) { getar(200); return toast('Uang diterima kurang dari total', 'bad'); }
-      simpanKeluar(d, 'cash', fotoP, offline, catatan);
+      simpanKeluar(d, 'cash', fotoP, offline, catatan, uang.value ? +uang.value : null);
     });
   }
 
@@ -667,7 +736,7 @@
     });
   }
 
-  function simpanKeluar(d, metode, fotoP, offline, catatan) {
+  function simpanKeluar(d, metode, fotoP, offline, catatan, tunai) {
     var btn = $('#sheet-body .xl'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
     Promise.resolve(fotoP).then(function (foto) {
       if (offline) return simpanKeluarOffline(d, metode, foto, catatan);
@@ -682,11 +751,11 @@
     }).then(function (resi) {
       var q = load('qr_keluar', []); q.unshift(d.tiket.kode_qr); save('qr_keluar', q.slice(0, 500));
       var key = 'k-' + d.tiket.id;
+      if (metode === 'cash' && tunai && tunai >= resi.total) resi.tunai = tunai;
       catatRiwayat({ key: key, jenis: 'keluar', data: resi, belumCetak: true });
       S.sheetClose = null; tutupSheet();
       bunyi(true); getar(60);
-      toast('Lunas ' + rp(resi.total) + ' — mencetak resi…', 'ok');
-      cetak('keluar', resi, key).then(function () { setTimeout(lanjutScan, 600); });
+      tampilBukti('keluar', resi, key, { auto: 6, onSelesai: lanjutScan });
     }).catch(function (e) {
       if (btn) { btn.disabled = false; btn.textContent = 'Coba lagi'; }
       toast(e.message, 'bad', 4000); getar(200);
@@ -697,7 +766,7 @@
     var resi = {
       id: null, plat: d.tiket.plat || '', jenis: d.tiket.jenis, waktu_masuk: d.tiket.waktu_masuk, waktu_keluar: d.waktu_keluar,
       durasi_menit: d.rincian.durasi_menit, total: d.total, metode: metode, tanpa_tiket: false, petugas: S.petugas.nama,
-      rincian: d.rincian_baris, offline: true
+      rincian: d.rincian_baris, offline: true, no_tiket: Resi.noTiket(d.tiket.id), pos_keluar: S.shift.pos_nama
     };
     return Outbox.tambah({
       uid: 'k-' + d.tiket.id, tipe: 'keluar', kode_qr: d.tiket.kode_qr, metode: metode, waktu_keluar: d.waktu_keluar,
@@ -805,12 +874,18 @@
     var sel = $('#sel-printer'); sel.value = Printer.mode();
     var st = Printer.status(), info = $('#printer-info');
     $('#btn-pilih-printer').hidden = st.mode !== 'bluetooth';
+    $('#opsi-gambar').hidden = st.mode !== 'bluetooth' && st.mode !== 'rawbt';
+    $('#opsi-paket').hidden = st.mode !== 'bluetooth';
+    $('#cek-gambar').checked = Printer.sebagaiGambar();
+    $('#sel-paket').value = String(Printer.ukuranPaket());
     info.textContent = st.mode === 'bluetooth'
-      ? (navigator.bluetooth ? (st.connected ? 'Terhubung: ' + (st.name || 'printer') : 'Belum terhubung. Nyalakan printer lalu tekan Hubungkan.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
-      : st.mode === 'rawbt' ? 'Pasang aplikasi RawBT dari Play Store dan pasangkan printer di dalamnya.'
-      : st.mode === 'browser' ? 'Resi dicetak lewat dialog cetak Android/Chrome (ukuran 58 mm).' : 'Resi tidak dicetak (hanya untuk uji coba).';
+      ? (navigator.bluetooth ? (st.connected ? 'Terhubung: ' + (st.name || 'printer') : 'Belum terhubung. Nyalakan printer lalu tekan Hubungkan. Bila printer tidak muncul di daftar, printer hanya Bluetooth klasik: pakai mode RawBT.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
+      : st.mode === 'rawbt' ? 'Pasang aplikasi RawBT dari Play Store, pasangkan printer di dalamnya. Paling andal untuk printer Bluetooth klasik.'
+      : st.mode === 'browser' ? 'Tiket dicetak sebagai gambar lewat dialog cetak Android. Pilih ukuran kertas 58 mm / roll bila tersedia.' : 'Resi tidak dicetak (hanya untuk uji coba).';
   }
   $('#sel-printer').addEventListener('change', function (e) { Printer.setMode(e.target.value); renderPrinter(); });
+  $('#cek-gambar').addEventListener('change', function (e) { Printer.setSebagaiGambar(e.target.checked); });
+  $('#sel-paket').addEventListener('change', function (e) { Printer.setUkuranPaket(e.target.value); });
   $('#btn-pilih-printer').addEventListener('click', function () {
     Printer.pilih().then(function () { toast('Printer terhubung', 'ok'); renderPrinter(); }).catch(function (e) { toast(e.message, 'bad', 4000); });
   });

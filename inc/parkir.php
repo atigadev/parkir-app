@@ -75,6 +75,19 @@ function catat_masuk(array $d, int $petugasId, ?int $shiftId): array
     return masuk_by_id($id);
 }
 
+/**
+ * Cari kendaraan berstatus parkir dari nomor tiket yang diketik (mis. "6B95-A60D"),
+ * untuk tiket yang QR-nya rusak/tidak terbaca.
+ */
+function masuk_by_no_tiket(string $no): ?array
+{
+    $hex = strtolower(preg_replace('/[^0-9a-fA-F]/', '', $no));
+    if (strlen($hex) !== 8) return null;
+    $rows = q_all("SELECT id FROM kendaraan_masuk WHERE id LIKE ? AND status <> 'void' ORDER BY waktu_masuk DESC LIMIT 2", [$hex . '%']);
+    if (count($rows) !== 1) return null; // tidak ada, atau (sangat jarang) bentrok
+    return masuk_by_id($rows[0]['id']);
+}
+
 /** Kendaraan lain dengan plat sama yang masih tercatat parkir. */
 function cek_plat_masih_parkir(string $plat): ?array
 {
@@ -166,8 +179,10 @@ function catat_keluar(array $d, int $petugasId, ?int $shiftId): array
 
 function transaksi_keluar_lengkap(int $id): ?array
 {
-    $row = q_one('SELECT tk.*, km.plat_nomor, km.jenis_kendaraan, km.waktu_masuk, km.pos_masuk, km.foto_masuk_url, p.nama AS petugas_nama
+    $row = q_one('SELECT tk.*, km.plat_nomor, km.jenis_kendaraan, km.waktu_masuk, km.pos_masuk, km.foto_masuk_url, p.nama AS petugas_nama,
+            s.pos_nama AS pos_keluar
         FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id JOIN petugas p ON p.id = tk.petugas_id
+        LEFT JOIN shift s ON s.id = tk.shift_id
         WHERE tk.id = ?', [$id]);
     if ($row) {
         $row['rincian'] = json_decode($row['rincian_biaya'], true);
