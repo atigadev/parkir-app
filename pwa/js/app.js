@@ -146,6 +146,7 @@
     pilihTab('kerja');
     renderChips();
     kunciLayar();
+    jagaPrinter();
   }
 
   $('#f-login').addEventListener('submit', function (ev) {
@@ -178,6 +179,7 @@
       if (n && !confirm(n + ' transaksi offline belum tersinkron dan akan tetap tersimpan di perangkat ini. Tetap keluar?')) return;
       if (S.shift && !confirm('Shift masih terbuka. Keluar akun tanpa menutup shift?')) return;
       api('auth.logout', { method: 'POST', body: {} }).catch(function () {});
+      Printer.berhentiJaga(true);
       save('sesi', null); S.token = null; S.shift = null;
       tampil('login');
     });
@@ -211,18 +213,62 @@
       c.hidden = !n; c.textContent = '⇅ ' + n + ' antre';
     }).catch(function () {});
     var ps = Printer.status(), pc = $('#chip-print');
-    if (ps.mode === 'bluetooth') { pc.textContent = ps.connected ? '🖨 Siap' : '🖨 Putus'; pc.className = 'chip ' + (ps.connected ? 'ok' : 'bad'); }
-    else { pc.textContent = '🖨 ' + ({ rawbt: 'RawBT', browser: 'Browser', none: 'Mati' }[ps.mode] || ps.mode); pc.className = 'chip'; }
+    if (ps.mode === 'bluetooth') {
+      pc.textContent = ps.connected ? '🖨 Siap' : ps.connecting ? '🖨 Menyambung…' : '🖨 Putus';
+      pc.className = 'chip ' + (ps.connected ? 'ok' : ps.connecting ? 'warn' : 'bad');
+    } else { pc.textContent = '🖨 ' + ({ rawbt: 'RawBT', browser: 'Browser', none: 'Mati' }[ps.mode] || ps.mode); pc.className = 'chip'; }
+    renderBannerPrinter(ps);
     var belum = load('riwayat', []).filter(function (r) { return r.belumCetak; }).length;
     var bc = $('#badge-cetak'); bc.hidden = !belum; bc.textContent = belum;
   }
   Printer.onChange(renderChips);
 
+  // ---------------------------------------------------------------- jaga koneksi printer
+  /** Jaga koneksi printer Bluetooth selama shift berjalan (sambung ulang otomatis + keep-alive). */
+  function jagaPrinter() {
+    if (!S.shift || Printer.mode() !== 'bluetooth' || !navigator.bluetooth) return;
+    Printer.mulaiJaga().catch(function () {}); // status & banner diperbarui lewat Printer.onChange
+  }
+
+  var printerSebelumnya = null, waktuPutus = 0;
+  function renderBannerPrinter(ps) {
+    var b = $('#banner-printer');
+    if (!b) return;
+    var tampilkan = !!S.shift && ps.mode === 'bluetooth' && ps.jaga && !ps.connected;
+    b.hidden = !tampilkan;
+    if (tampilkan) {
+      b.className = 'banner-printer ' + (ps.perluPilih ? 'bad' : 'warn');
+      $('#bp-teks').textContent = ps.perluPilih
+        ? 'Printer belum tersambung. Ketuk Hubungkan lalu pilih printer.'
+        : 'Printer terputus — menyambung ulang otomatis…' + (ps.galat ? ' (' + ps.galat + ')' : '');
+      $('#bp-aksi').textContent = ps.perluPilih ? 'Hubungkan' : 'Sambung sekarang';
+    }
+    // Notifikasi sekali saat status berubah selama shift
+    if (ps.mode === 'bluetooth' && ps.jaga && printerSebelumnya !== null && printerSebelumnya !== ps.connected) {
+      if (!ps.connected) { waktuPutus = Date.now(); getar([120, 80, 120]); toast('Printer terputus — menyambung ulang…', 'bad', 3500); }
+      else if (waktuPutus) { toast('Printer tersambung kembali', 'ok'); waktuPutus = 0; }
+    }
+    printerSebelumnya = ps.jaga ? ps.connected : null;
+  }
+
+  /** Dipanggil langsung dari ketukan: dialog pilih printer hanya boleh dibuka dari gesture pengguna. */
+  function hubungkanPrinter() {
+    var ps = Printer.status();
+    var p = ps.perluPilih || !ps.name ? Printer.pilih() : Printer.sambungUlang();
+    p.then(function () {
+      toast('Printer tersambung', 'ok');
+      if (S.shift) Printer.mulaiJaga().catch(function () {});
+      if (!$('#s-shift').hidden) renderPrinter();
+    }).catch(function (e) {
+      if (e && e.name === 'NotFoundError') return; // dialog dibatalkan
+      toast(e.message || String(e), 'bad', 4500);
+    });
+  }
   $('#chip-net').addEventListener('click', function () { api('me').then(function () { toast('Terhubung ke server', 'ok'); }).catch(function (e) { toast(e.message, 'bad'); }); });
   $('#chip-sync').addEventListener('click', function () { pilihTab('shift'); });
   $('#chip-print').addEventListener('click', function () {
     if (Printer.mode() !== 'bluetooth') return pilihTab('shift');
-    Printer.sambungUlang().catch(function () { return Printer.pilih(); }).then(function () { toast('Printer terhubung', 'ok'); }).catch(function (e) { toast(e.message, 'bad', 4000); });
+    hubungkanPrinter();
   });
 
   if (navigator.getBattery) {
@@ -863,6 +909,7 @@
           '<span class="k">Masuk / keluar</span><span class="v">' + d.kendaraan_masuk + ' / ' + d.kendaraan_keluar + '</span></div>' +
           '<button class="btn primary xl" id="b-ok">Selesai</button></div>');
         $('#b-ok').addEventListener('click', tutupSheet);
+        Printer.berhentiJaga(true);
         S.shift = null; simpanSesi(); f.reset();
         masukAplikasi();
       }).catch(function (er) { toast(er.message, 'bad'); });
@@ -884,17 +931,21 @@
     $('#sel-kertas').options[0].textContent = 'Ikuti pengaturan admin (' + kAdmin.label + ')';
     $('#sel-qr').value = String(Printer.qrTipis());
     info.textContent = st.mode === 'bluetooth'
-      ? (navigator.bluetooth ? (st.connected ? 'Terhubung: ' + (st.name || 'printer') : 'Belum terhubung. Nyalakan printer lalu tekan Hubungkan. Bila printer tidak muncul di daftar, printer hanya Bluetooth klasik: pakai mode RawBT.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
+      ? (navigator.bluetooth ? (st.connected ? 'Tersambung: ' + (st.name || 'printer') + '. Koneksi dijaga otomatis sampai shift ditutup (sambung ulang otomatis bila terputus).' : st.connecting ? 'Menyambung ulang ke ' + (st.name || 'printer') + '…' : 'Belum tersambung. Nyalakan printer lalu tekan Hubungkan printer. Bila printer tidak muncul di daftar, printer hanya Bluetooth klasik: pakai mode RawBT.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
       : st.mode === 'rawbt' ? 'Pasang aplikasi RawBT dari Play Store, pasangkan printer di dalamnya. Paling andal untuk printer Bluetooth klasik.'
       : st.mode === 'browser' ? 'Tiket dicetak sebagai gambar lewat dialog cetak Android. Pilih ukuran kertas 58 mm / roll bila tersedia.' : 'Resi tidak dicetak (hanya untuk uji coba).';
   }
-  $('#sel-printer').addEventListener('change', function (e) { Printer.setMode(e.target.value); renderPrinter(); });
+  $('#sel-printer').addEventListener('change', function (e) { Printer.setMode(e.target.value); renderPrinter(); jagaPrinter(); });
+  $('#bp-aksi').addEventListener('click', hubungkanPrinter);
   $('#cek-gambar').addEventListener('change', function (e) { Printer.setSebagaiGambar(e.target.checked); });
   $('#sel-paket').addEventListener('change', function (e) { Printer.setUkuranPaket(e.target.value); });
   $('#sel-qr').addEventListener('change', function (e) { Printer.setQrTipis(e.target.value); });
   $('#sel-kertas').addEventListener('change', function (e) { Printer.setKertasPerangkat(e.target.value); renderPrinter(); });
   $('#btn-pilih-printer').addEventListener('click', function () {
-    Printer.pilih().then(function () { toast('Printer terhubung', 'ok'); renderPrinter(); }).catch(function (e) { toast(e.message, 'bad', 4000); });
+    Printer.pilih().then(function () {
+      toast('Printer tersambung', 'ok'); renderPrinter();
+      if (S.shift) Printer.mulaiJaga().catch(function () {});
+    }).catch(function (e) { if (e && e.name !== 'NotFoundError') toast(e.message, 'bad', 4000); });
   });
   $('#btn-tes-printer').addEventListener('click', function () {
     Printer.tesCetak(S.config || {}).then(function () { toast('Tes cetak dikirim', 'ok'); renderPrinter(); }).catch(function (e) { toast(e.message, 'bad', 4000); });

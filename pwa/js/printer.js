@@ -129,30 +129,62 @@
   }
 
   // ---------------------------------------------------------------- Bluetooth
+  /*
+   * Mode "jaga koneksi" (aktif dari buka shift sampai tutup shift):
+   *  - sambung ulang otomatis saat koneksi putus (jeda 1, 2, 4, 8 … maks 15 detik, terus mencoba)
+   *  - keep-alive tiap 20 detik agar printer tidak memutus koneksi karena dianggap menganggur
+   *  - sambung ulang saat layar HP menyala kembali / aplikasi kembali ke depan
+   *  - semua pengiriman data diantrekan (cetak & keep-alive tidak pernah bertabrakan)
+   *  - printer yang pernah dipilih diingat, disambungkan lagi tanpa memilih ulang bila browser mendukung
+   */
   var dev = null, chr = null, listeners = [];
+  var jaga = false, menyambung = null, timerUlang = null, timerKeepAlive = null, percobaan = 0, terakhirKirim = 0;
+  var antrian = Promise.resolve(), sedangCetak = false, perluPilih = false, pesanGalat = '';
+  var KEEPALIVE_MS = 20000, BATAS_SAMBUNG_MS = 12000;
 
+  function tersambung() { return !!(chr && dev && dev.gatt && dev.gatt.connected); }
   function status() {
-    return { mode: mode(), connected: !!(chr && dev && dev.gatt && dev.gatt.connected), name: dev ? dev.name : null };
+    return {
+      mode: mode(), connected: tersambung(), connecting: !!menyambung || (!!timerUlang && jaga),
+      name: dev ? dev.name : opsi('printer_nama', null), jaga: jaga, perluPilih: perluPilih && !tersambung(), galat: pesanGalat
+    };
   }
   function notify() { listeners.forEach(function (f) { try { f(status()); } catch (e) {} }); }
   function mode() { try { return localStorage.getItem('printer_mode') || (navigator.bluetooth ? 'bluetooth' : 'browser'); } catch (e) { return 'browser'; } }
-  function setMode(m) { try { localStorage.setItem('printer_mode', m); } catch (e) {} notify(); }
+  function setMode(m) { try { localStorage.setItem('printer_mode', m); } catch (e) {} if (m !== 'bluetooth') berhentiJaga(false); notify(); }
   function opsi(k, bawaan) { try { var v = localStorage.getItem(k); return v === null ? bawaan : v; } catch (e) { return bawaan; } }
   function setOpsi(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
-  /** Cetak seluruh tiket sebagai gambar (bawaan: ya). */
   // Bawaan: gambar untuk RawBT (Bluetooth klasik, cepat); teks untuk BLE (gambar ±40 KB terlalu lambat lewat paket 20 byte).
   function sebagaiGambar() { return opsi('printer_gambar', mode() === 'rawbt' ? '1' : '0') === '1'; }
-  /** Ukuran paket Bluetooth (byte). 20 = aman untuk semua printer BLE. */
   /** Kompensasi pelebaran tinta QR (titik): 0 = tanpa, 1 = bawaan, 2 = printer sangat pekat. */
   function qrTipis() { var n = parseInt(opsi('printer_qr_tipis', '1'), 10); return n >= 0 && n <= 3 ? n : 1; }
   /** Lebar kertas printer di HP ini: 'auto' (ikut pengaturan admin), '58' atau '80'. */
   function kertasPerangkat() { var v = opsi('printer_kertas', 'auto'); return v === '58' || v === '80' ? v : 'auto'; }
   /** Data kertas yang dipakai untuk mencetak (lihat Resi.KERTAS). */
   function kertasAktif(cfg) { var v = kertasPerangkat(); return Resi.kertas(v === 'auto' ? Resi.opsi(cfg).kertas : v); }
+  /** Ukuran paket Bluetooth (byte). 20 = aman untuk semua printer BLE. */
   function ukuranPaket() { var n = parseInt(opsi('printer_paket', '20'), 10); return n > 0 ? n : 20; }
+
+  /** Jalankan fn setelah pekerjaan Bluetooth sebelumnya selesai (berhasil atau gagal). */
+  function antre(fn) {
+    var p = antrian.then(fn, fn);
+    antrian = p.then(function () {}, function () {});
+    return p;
+  }
+  function denganBatas(p, ms, pesan) {
+    return new Promise(function (res, rej) {
+      var t = setTimeout(function () { rej(new Error(pesan)); }, ms);
+      p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
+    });
+  }
 
   function cariKarakteristik(server) {
     return server.getPrimaryServices().then(function (services) {
+      // Utamakan layanan printer yang dikenal, baru layanan lain.
+      services.sort(function (a, b) {
+        var ia = SERVICES.indexOf(a.uuid), ib = SERVICES.indexOf(b.uuid);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
       var i = 0;
       function next() {
         if (i >= services.length) throw new Error('Karakteristik tulis tidak ditemukan pada printer');
@@ -169,46 +201,158 @@
   }
 
   function hubungkan(device) {
+    if (dev && dev !== device) dev.removeEventListener('gattserverdisconnected', onPutus);
     dev = device;
     dev.removeEventListener('gattserverdisconnected', onPutus);
     dev.addEventListener('gattserverdisconnected', onPutus);
-    return dev.gatt.connect().then(cariKarakteristik).then(function (c) { chr = c; notify(); return status(); });
+    setOpsi('printer_id', device.id); setOpsi('printer_nama', device.name || 'Printer');
+    var p = (dev.gatt.connected ? Promise.resolve(dev.gatt) : dev.gatt.connect()).then(cariKarakteristik).then(function (c) {
+      chr = c; percobaan = 0; perluPilih = false; pesanGalat = ''; terakhirKirim = Date.now();
+      notify();
+      return status();
+    });
+    return denganBatas(p, BATAS_SAMBUNG_MS, 'Printer tidak merespons. Pastikan printer menyala & dekat.');
   }
-  function onPutus() { chr = null; notify(); }
 
-  /** Pilih printer (wajib dari gesture pengguna). */
+  function onPutus() {
+    chr = null;
+    notify();
+    if (jaga) jadwalkanSambungUlang();
+  }
+
+  function jadwalkanSambungUlang() {
+    if (!jaga || timerUlang || menyambung || tersambung()) return;
+    var jeda = Math.min(15000, 1000 * Math.pow(2, Math.min(percobaan, 4)));
+    percobaan++;
+    timerUlang = setTimeout(function () {
+      timerUlang = null;
+      sambungUlang().catch(function () { if (jaga && !perluPilih) jadwalkanSambungUlang(); });
+    }, jeda);
+    notify();
+  }
+
+  /**
+   * Sambungkan ke printer yang sudah dikenal (tanpa dialog). Gagal dengan kode 'perlu_pilih'
+   * bila browser tidak mengingat printer, sehingga petugas harus menekan "Hubungkan printer".
+   */
+  function sambungUlang() {
+    if (tersambung()) return Promise.resolve(status());
+    if (menyambung) return menyambung;
+    var p;
+    if (dev) {
+      p = hubungkan(dev);
+    } else if (navigator.bluetooth && navigator.bluetooth.getDevices) {
+      p = navigator.bluetooth.getDevices().then(function (ds) {
+        var id = opsi('printer_id', ''), cocok = ds.filter(function (d) { return d.id === id; })[0] || ds[0];
+        if (!cocok) { var e = new Error('Printer belum dipilih di HP ini'); e.kode = 'perlu_pilih'; throw e; }
+        return hubungkan(cocok);
+      });
+    } else {
+      var e = new Error(navigator.bluetooth ? 'Pilih printer sekali lagi setelah aplikasi dibuka ulang' : 'Browser tidak mendukung Web Bluetooth');
+      e.kode = 'perlu_pilih';
+      p = Promise.reject(e);
+    }
+    menyambung = p.then(function (s) { menyambung = null; notify(); return s; }, function (err) {
+      menyambung = null;
+      if (err && err.kode === 'perlu_pilih') perluPilih = true;
+      pesanGalat = err && err.message || String(err);
+      notify();
+      throw err;
+    });
+    notify();
+    return menyambung;
+  }
+
+  /** Pilih printer lewat dialog Chrome (wajib dari ketukan pengguna). */
   function pilih() {
     if (!navigator.bluetooth) return Promise.reject(new Error('Browser tidak mendukung Web Bluetooth. Gunakan Chrome Android dengan HTTPS, atau mode RawBT.'));
-    return navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICES }).then(hubungkan);
+    return navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICES }).then(function (d) {
+      percobaan = 0;
+      return hubungkan(d);
+    });
   }
 
-  /** Sambung ulang otomatis ke printer yang pernah diizinkan (bila browser mendukung). */
-  function sambungUlang() {
-    if (chr && dev && dev.gatt.connected) return Promise.resolve(status());
-    if (dev) return hubungkan(dev);
-    if (navigator.bluetooth && navigator.bluetooth.getDevices) {
-      return navigator.bluetooth.getDevices().then(function (ds) {
-        if (!ds.length) throw new Error('Printer belum dipilih');
-        return hubungkan(ds[0]);
-      });
+  function keepAlive() {
+    if (!jaga || sedangCetak || !tersambung() || Date.now() - terakhirKirim < KEEPALIVE_MS - 1000) return;
+    // DLE EOT 1: perintah real-time "minta status" — tidak mencetak apa pun & tidak mengganggu buffer.
+    antre(function () {
+      if (!tersambung()) return;
+      var data = new Uint8Array([0x10, 0x04, 0x01]);
+      var p = chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse ? chr.writeValueWithoutResponse(data) : chr.writeValue(data);
+      return p.then(function () { terakhirKirim = Date.now(); });
+    }).catch(function () {
+      // Tulis gagal = koneksi sebenarnya sudah mati; paksa sambung ulang.
+      chr = null; notify(); jadwalkanSambungUlang();
+    });
+  }
+
+  function saatTerlihat() {
+    if (document.visibilityState === 'visible' && jaga && !tersambung()) {
+      clearTimeout(timerUlang); timerUlang = null; percobaan = 0;
+      sambungUlang().catch(function () { if (jaga && !perluPilih) jadwalkanSambungUlang(); });
     }
-    return Promise.reject(new Error('Printer belum terhubung'));
+  }
+
+  /** Mulai jaga koneksi (dipanggil saat shift dibuka / aplikasi dibuka dengan shift aktif). */
+  function mulaiJaga() {
+    if (mode() !== 'bluetooth' || !navigator.bluetooth) return Promise.resolve(status());
+    if (!jaga) {
+      jaga = true;
+      timerKeepAlive = setInterval(keepAlive, 5000);
+      document.addEventListener('visibilitychange', saatTerlihat);
+      window.addEventListener('online', saatTerlihat);
+    }
+    return sambungUlang().catch(function (e) { if (!perluPilih) jadwalkanSambungUlang(); throw e; });
+  }
+
+  /** Hentikan jaga koneksi (tutup shift / keluar akun). putuskan = juga memutus Bluetooth. */
+  function berhentiJaga(putuskan) {
+    jaga = false;
+    clearInterval(timerKeepAlive); timerKeepAlive = null;
+    clearTimeout(timerUlang); timerUlang = null;
+    document.removeEventListener('visibilitychange', saatTerlihat);
+    window.removeEventListener('online', saatTerlihat);
+    if (putuskan && dev && dev.gatt && dev.gatt.connected) { try { dev.gatt.disconnect(); } catch (e) {} }
+    notify();
+  }
+
+  function kirimPaket(data) {
+    // Printer BLE murah umumnya hanya menerima 20 byte per paket; paket lebih besar terpotong diam-diam
+    // (sebagian teks hilang). Jeda singkat tiap ±1 KB memberi waktu buffer printer mengosongkan diri.
+    var off = 0, CHUNK = ukuranPaket(), tanpaRespons = chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse;
+    var hasil = { terkirim: 0 };
+    function step() {
+      if (off >= data.length) return Promise.resolve(hasil);
+      if (!tersambung()) return Promise.reject(Object.assign(new Error('Printer terputus saat mencetak'), { terkirim: off }));
+      var part = data.slice(off, off + CHUNK);
+      var p = tanpaRespons ? chr.writeValueWithoutResponse(part) : chr.writeValue(part);
+      return p.then(function () {
+        off += CHUNK; hasil.terkirim = off; terakhirKirim = Date.now();
+        var jeda = off % 1024 < CHUNK ? 40 : (tanpaRespons ? 4 : 0);
+        return jeda ? new Promise(function (r) { setTimeout(r, jeda); }) : null;
+      }, function (e) { e.terkirim = off; throw e; }).then(step);
+    }
+    return step();
   }
 
   function tulisBT(data) {
-    return sambungUlang().then(function () {
-      // Printer BLE murah umumnya hanya menerima 20 byte per paket; paket lebih besar terpotong diam-diam
-      // (sebagian teks hilang). Jeda singkat tiap ±1 KB memberi waktu buffer printer mengosongkan diri.
-      var off = 0, CHUNK = ukuranPaket(), tanpaRespons = chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse;
-      function step() {
-        if (off >= data.length) return Promise.resolve();
-        var part = data.slice(off, off + CHUNK);
-        off += CHUNK;
-        var p = tanpaRespons ? chr.writeValueWithoutResponse(part) : chr.writeValue(part);
-        var jeda = off % 1024 < CHUNK ? 40 : (tanpaRespons ? 4 : 0);
-        return p.then(function () { return jeda ? new Promise(function (r) { setTimeout(r, jeda); }) : null; }).then(step);
+    return antre(function () {
+      sedangCetak = true;
+      function coba(ke) {
+        return sambungUlang().then(function () { return kirimPaket(data); }).catch(function (e) {
+          // Ulangi sekali hanya bila belum ada data yang terkirim (agar tiket tidak tercetak ganda).
+          if (ke === 0 && !(e && e.terkirim > 0) && !(e && e.kode === 'perlu_pilih')) {
+            chr = null;
+            return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return coba(1); });
+          }
+          throw e;
+        });
       }
-      return step();
+      return coba(0).then(function (v) { sedangCetak = false; return v; }, function (e) {
+        sedangCetak = false;
+        if (jaga && !tersambung()) jadwalkanSambungUlang();
+        throw e;
+      });
     });
   }
 
@@ -270,6 +414,7 @@
   global.Printer = {
     cetak: cetak, tesCetak: tesCetak, pilih: pilih, sambungUlang: sambungUlang, escpos: escpos, raster: rasterDariCanvas,
     status: status, mode: mode, setMode: setMode, onChange: function (f) { listeners.push(f); },
+    mulaiJaga: mulaiJaga, berhentiJaga: berhentiJaga,
     sebagaiGambar: sebagaiGambar, setSebagaiGambar: function (v) { setOpsi('printer_gambar', v ? '1' : '0'); },
     ukuranPaket: ukuranPaket, setUkuranPaket: function (n) { setOpsi('printer_paket', n); },
     qrTipis: qrTipis, setQrTipis: function (n) { setOpsi('printer_qr_tipis', n); },
