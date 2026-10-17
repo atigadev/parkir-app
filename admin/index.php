@@ -33,7 +33,7 @@ $kolVersi = kolom_ada('petugas', 'app_versi') ? ', p.app_versi, p.app_versi_at' 
 $shiftBuka = q_all("SELECT s.*, p.nama$kolVersi FROM shift s JOIN petugas p ON p.id = s.petugas_id WHERE s.waktu_tutup IS NULL ORDER BY s.waktu_buka");
 $voidMinta = (int)q_val("SELECT COUNT(*) FROM kendaraan_masuk WHERE void_diminta_at IS NOT NULL AND status <> 'void' AND void_oleh IS NULL");
 $qrisBelum = (int)q_val("SELECT COUNT(*) FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.status <> 'void' AND tk.metode_bayar = 'qris' AND tk.qris_terverifikasi = 0 AND tk.total_biaya > 0");
-$selisihHari = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih),0) total FROM shift WHERE waktu_tutup >= ? AND selisih <> 0", [$hari]);
+$selisihHari = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih),0) total FROM shift WHERE pos = 'keluar' AND waktu_tutup >= ? AND selisih <> 0", [$hari]);
 
 layout_atas('Dashboard', 'index.php');
 ?>
@@ -96,8 +96,8 @@ layout_atas('Dashboard', 'index.php');
           <td><?= tgl($s['waktu_buka']) ?></td>
           <td class="num"><?= $rs['kendaraan_masuk'] ?></td>
           <td class="num"><?= $rs['kendaraan_keluar'] ?></td>
-          <td class="num"><?= rupiah($rs['total_cash']) ?></td>
-          <td class="num"><?= rupiah($rs['total_qris']) ?></td>
+          <td class="num"><?= $s['pos'] === 'masuk' ? '<span class="muted">–</span>' : rupiah($rs['total_cash']) ?></td>
+          <td class="num"><?= $s['pos'] === 'masuk' ? '<span class="muted">–</span>' : rupiah($rs['total_qris']) ?></td>
           <td><?= badge_versi($s['app_versi'] ?? null, $s['app_versi_at'] ?? null) ?></td>
         </tr>
       <?php endforeach; if (!$shiftBuka): ?><tr><td colspan="8" class="empty">Tidak ada shift yang sedang berjalan.</td></tr><?php endif; ?>

@@ -232,14 +232,10 @@ try {
         $s = shift_aktif($p['id']);
         if (!$s) gagal('Tidak ada shift terbuka.', 'shift', 409);
         $in = input();
-        if (!isset($in['setor']) || !is_numeric($in['setor']) || $in['setor'] < 0) gagal('Isi jumlah uang setoran.', 'setor');
-        $sistem = total_cash_shift((int)$s['id']);
-        $setor = (int)$in['setor'];
-        $selisih = $setor - $sistem;
-        q('UPDATE shift SET waktu_tutup = ?, total_cash_sistem = ?, total_cash_setor = ?, selisih = ?, catatan = ? WHERE id = ?', [
-            now(), $sistem, $setor, $selisih, mb_substr(trim((string)($in['catatan'] ?? '')), 0, 255) ?: null, $s['id'],
-        ]);
-        log_aktivitas($p['id'], 'tutup_shift', $s['id'], null, ['sistem' => $sistem, 'setor' => $setor, 'selisih' => $selisih]);
+        $setor = isset($in['setor']) && $in['setor'] !== '' && is_numeric($in['setor']) ? (int)$in['setor'] : null;
+        $rekap = ringkasan_shift((int)$s['id']);
+        $hasil = tutup_shift($s, $setor, isset($in['catatan']) ? (string)$in['catatan'] : null);
+        log_aktivitas($p['id'], 'tutup_shift', $s['id'], null, $hasil + ['pos' => $s['pos']] + ($s['pos'] === 'masuk' ? ['tiket' => $rekap['tiket']] : []));
         ok(['shift' => q_one('SELECT * FROM shift WHERE id = ?', [$s['id']])] + ringkasan_shift((int)$s['id']));
 
     // ---------------- Pos masuk --------------------------------------------

@@ -867,18 +867,34 @@
   }
 
   // ================================================================ SHIFT
+  /** Rekap tiket pos masuk (pos masuk tidak menerima uang; yang dipertanggungjawabkan jumlah tiket). */
+  function rekapTiketHtml(d) {
+    var t = d.tiket || {};
+    return '<span class="k">Tiket diterbitkan</span><span class="v" style="font-size:20px">' + d.kendaraan_masuk + '</span>' +
+      '<span class="k">· Motor</span><span class="v">' + (t.motor || 0) + '</span>' +
+      '<span class="k">· Mobil</span><span class="v">' + (t.mobil || 0) + '</span>' +
+      (t.void ? '<span class="k">Dibatalkan (void)</span><span class="v">' + t.void + '</span>' : '') +
+      (t.minta_void ? '<span class="k">Menunggu persetujuan void</span><span class="v" style="color:var(--warn)">' + t.minta_void + '</span>' : '') +
+      (t.offline ? '<span class="k">Dibuat saat offline</span><span class="v">' + t.offline + '</span>' : '') +
+      '<span class="k">Masih parkir</span><span class="v">' + (t.masih_parkir || 0) + '</span>';
+  }
+
   function renderShift() {
     var info = $('#shift-info');
     var s = S.shift;
     info.innerHTML = '<span class="k">Pos</span><span class="v">' + esc(s.pos === 'masuk' ? 'Masuk' : 'Keluar') + ' · ' + esc(s.pos_nama) + '</span>' +
       '<span class="k">Dibuka</span><span class="v">' + tglJam(s.waktu_buka) + '</span><span class="k">Ringkasan</span><span class="v muted">memuat…</span>';
-    $('#f-tutup').setor.value = '';
+    var posMasuk = s.pos === 'masuk', ft = $('#f-tutup');
+    ft.setor.value = '';
+    ft.setor.required = !posMasuk;
+    $('#tutup-uang').hidden = posMasuk;
+    $('#tutup-info').hidden = !posMasuk;
     $('#selisih-preview').textContent = '';
     api('shift.ringkasan').then(function (d) {
       S.ringkasan = d;
       info.innerHTML = '<span class="k">Pos</span><span class="v">' + esc(s.pos === 'masuk' ? 'Masuk' : 'Keluar') + ' · ' + esc(s.pos_nama) + '</span>' +
         '<span class="k">Dibuka</span><span class="v">' + tglJam(s.waktu_buka) + '</span>' +
-        (s.pos === 'masuk' ? '<span class="k">Kendaraan masuk</span><span class="v">' + d.kendaraan_masuk + '</span>'
+        (s.pos === 'masuk' ? rekapTiketHtml(d)
           : '<span class="k">Kendaraan keluar</span><span class="v">' + d.kendaraan_keluar + '</span>' +
             '<span class="k">QRIS</span><span class="v">' + rp(d.total_qris) + '</span>' +
             '<span class="k">Cash (harus disetor)</span><span class="v" style="font-size:20px">' + rp(d.total_cash) + '</span>');
@@ -900,16 +916,24 @@
     var f = e.target;
     Outbox.jumlah().then(function (n) {
       if (n) { toast('Masih ada ' + n + ' transaksi offline. Sinkronkan dulu sebelum menutup shift.', 'bad', 4000); return; }
-      if (!confirm('Tutup shift dengan setoran ' + rp(f.setor.value) + '?')) return;
-      api('shift.tutup', { body: { setor: +f.setor.value, catatan: f.catatan.value } }).then(function (d) {
+      var posMasuk = S.shift.pos === 'masuk';
+      var tanya = posMasuk
+        ? 'Tutup shift pos masuk?' + (S.ringkasan ? ' ' + S.ringkasan.kendaraan_masuk + ' tiket diterbitkan.' : '')
+        : 'Tutup shift dengan setoran ' + rp(f.setor.value) + '?';
+      if (!confirm(tanya)) return;
+      var body = { catatan: f.catatan.value };
+      if (!posMasuk) body.setor = +f.setor.value;
+      api('shift.tutup', { body: body }).then(function (d) {
         stopKamera(); stopScanner();
         var sh = d.shift;
         bukaSheet('<div class="stack"><h3>Shift ditutup</h3><div class="kv">' +
-          '<span class="k">Cash sistem</span><span class="v">' + rp(sh.total_cash_sistem) + '</span>' +
-          '<span class="k">Disetor</span><span class="v">' + rp(sh.total_cash_setor) + '</span>' +
-          '<span class="k">Selisih</span><span class="v" style="color:' + (sh.selisih < 0 ? 'var(--danger)' : 'inherit') + '">' + rp(sh.selisih) + '</span>' +
-          '<span class="k">Masuk / keluar</span><span class="v">' + d.kendaraan_masuk + ' / ' + d.kendaraan_keluar + '</span></div>' +
-          '<button class="btn primary xl" id="b-ok">Selesai</button></div>');
+          (sh.pos === 'masuk' ? rekapTiketHtml(d)
+            : '<span class="k">Kendaraan keluar</span><span class="v">' + d.kendaraan_keluar + '</span>' +
+              '<span class="k">QRIS</span><span class="v">' + rp(d.total_qris) + '</span>' +
+              '<span class="k">Cash sistem</span><span class="v">' + rp(sh.total_cash_sistem) + '</span>' +
+              '<span class="k">Disetor</span><span class="v">' + rp(sh.total_cash_setor) + '</span>' +
+              '<span class="k">Selisih</span><span class="v" style="color:' + (sh.selisih < 0 ? 'var(--danger)' : 'inherit') + '">' + rp(sh.selisih) + '</span>') +
+          '</div><button class="btn primary xl" id="b-ok">Selesai</button></div>');
         $('#b-ok').addEventListener('click', tutupSheet);
         Printer.berhentiJaga(true);
         S.shift = null; simpanSesi(); f.reset();

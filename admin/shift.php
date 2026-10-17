@@ -8,13 +8,14 @@ if (is_post() && ($_POST['aksi'] ?? '') === 'tutup_paksa') {
     cek_csrf();
     $s = q_one('SELECT * FROM shift WHERE id = ? AND waktu_tutup IS NULL', [(int)$_POST['id']]);
     if ($s) {
-        $sistem = total_cash_shift((int)$s['id']);
-        $setor = (int)($_POST['setor'] ?? 0);
-        q('UPDATE shift SET waktu_tutup = ?, total_cash_sistem = ?, total_cash_setor = ?, selisih = ?, catatan = ? WHERE id = ?', [
-            now(), $sistem, $setor, $setor - $sistem, 'Ditutup admin: ' . mb_substr(trim((string)($_POST['catatan'] ?? '')), 0, 200), $s['id'],
-        ]);
-        log_aktivitas(admin_id(), 'tutup_shift_admin', $s['id'], null, ['sistem' => $sistem, 'setor' => $setor]);
-        flash('Shift ditutup.');
+        try {
+            $setor = isset($_POST['setor']) && $_POST['setor'] !== '' ? (int)$_POST['setor'] : null;
+            $hasil = tutup_shift($s, $setor, 'Ditutup admin: ' . mb_substr(trim((string)($_POST['catatan'] ?? '')), 0, 200));
+            log_aktivitas(admin_id(), 'tutup_shift_admin', $s['id'], null, $hasil + ['pos' => $s['pos']]);
+            flash('Shift ditutup.');
+        } catch (ParkirException $ex) {
+            flash($ex->getMessage(), 'err');
+        }
     }
     redirect(self_url());
 }
@@ -40,24 +41,28 @@ layout_atas('Shift & Setoran', 'shift.php');
     <table>
       <thead><tr><th>Petugas</th><th>Pos</th><th>Buka</th><th>Tutup</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Cash sistem</th><th class="num">QRIS</th><th class="num">Setoran</th><th class="num">Selisih</th><th></th></tr></thead>
       <tbody>
-      <?php foreach ($rows as $s): $rs = ringkasan_shift((int)$s['id']); $buka = $s['waktu_tutup'] === null; ?>
+      <?php foreach ($rows as $s): $rs = ringkasan_shift((int)$s['id']); $buka = $s['waktu_tutup'] === null; $posMasuk = $s['pos'] === 'masuk'; ?>
         <tr>
           <td><?= e($s['nama']) ?></td>
           <td><?= badge($s['pos'], $s['pos'] === 'masuk' ? 'info' : 'ok') ?> <?= e($s['pos_nama']) ?></td>
           <td><?= tgl($s['waktu_buka']) ?></td>
           <td><?= $buka ? badge('berjalan', 'info') : tgl($s['waktu_tutup']) ?></td>
-          <td class="num"><?= $rs['kendaraan_masuk'] ?></td>
+          <td class="num"><?= $rs['kendaraan_masuk'] ?><?php if ($posMasuk && ($rs['tiket']['void'] || $rs['tiket']['offline'])): ?><br><small class="muted"><?= $rs['tiket']['void'] ? $rs['tiket']['void'] . ' void ' : '' ?><?= $rs['tiket']['offline'] ? $rs['tiket']['offline'] . ' offline' : '' ?></small><?php endif; ?></td>
           <td class="num"><?= $rs['kendaraan_keluar'] ?></td>
+          <?php if ($posMasuk): ?>
+          <td class="num muted" colspan="4" style="text-align:center">Pos masuk tidak menerima uang · rekap tiket: <?= $rs['tiket']['motor'] ?> motor, <?= $rs['tiket']['mobil'] ?> mobil</td>
+          <?php else: ?>
           <td class="num"><?= rupiah($buka ? $rs['total_cash'] : $s['total_cash_sistem']) ?></td>
           <td class="num"><?= rupiah($rs['total_qris']) ?></td>
           <td class="num"><?= $buka ? '–' : rupiah($s['total_cash_setor']) ?></td>
           <td class="num"><?php if (!$buka): $sl = (int)$s['selisih']; echo $sl === 0 ? badge('pas', 'ok') : badge(($sl > 0 ? '+' : '') . rupiah($sl), $sl < 0 ? 'danger' : 'warn'); endif; ?></td>
+          <?php endif; ?>
           <td>
             <?php if ($buka): ?>
             <details><summary class="btn sm ghost">Tutup paksa</summary>
               <form method="post" style="display:grid;gap:6px;margin-top:6px;min-width:200px" data-confirm="Tutup shift ini atas nama admin?">
                 <?= csrf_field() ?><input type="hidden" name="aksi" value="tutup_paksa"><input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
-                <input type="number" name="setor" min="0" placeholder="Uang diterima" required>
+                <?php if (!$posMasuk): ?><input type="number" name="setor" min="0" placeholder="Uang diterima" required><?php endif; ?>
                 <input name="catatan" placeholder="Alasan">
                 <button class="btn sm danger">Tutup shift</button>
               </form>

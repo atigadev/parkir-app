@@ -209,12 +209,48 @@ function ringkasan_shift(int $shiftId): array
             COALESCE(SUM(CASE WHEN tk.metode_bayar='qris' THEN tk.total_biaya END),0) AS qris
         FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id
         WHERE tk.shift_id = ? AND km.status <> 'void'", [$shiftId]);
+    // Rekap tiket pos masuk (pos masuk tidak menerima uang; yang dipertanggungjawabkan adalah tiket)
+    $t = q_one("SELECT
+            COALESCE(SUM(status <> 'void' AND jenis_kendaraan = 'motor'), 0) AS motor,
+            COALESCE(SUM(status <> 'void' AND jenis_kendaraan = 'mobil'), 0) AS mobil,
+            COALESCE(SUM(status = 'void'), 0) AS void,
+            COALESCE(SUM(status <> 'void' AND offline = 1), 0) AS offline,
+            COALESCE(SUM(status = 'parkir'), 0) AS masih_parkir,
+            COALESCE(SUM(status = 'parkir' AND void_diminta_at IS NOT NULL), 0) AS minta_void
+        FROM kendaraan_masuk WHERE shift_id = ?", [$shiftId]);
     return [
         'kendaraan_masuk'  => $masuk,
         'kendaraan_keluar' => (int)$k['jumlah'],
         'total_cash'       => (int)$k['cash'],
         'total_qris'       => (int)$k['qris'],
+        'tiket' => [
+            'motor'        => (int)$t['motor'],
+            'mobil'        => (int)$t['mobil'],
+            'void'         => (int)$t['void'],
+            'offline'      => (int)$t['offline'],
+            'masih_parkir' => (int)$t['masih_parkir'],
+            'minta_void'   => (int)$t['minta_void'],
+        ],
     ];
+}
+
+/**
+ * Tutup shift. Pos keluar: rekap uang (cash sistem vs setoran → selisih).
+ * Pos masuk: tidak menerima uang, jadi tanpa setoran/selisih (tercatat NULL); yang direkap jumlah tiket.
+ */
+function tutup_shift(array $shift, ?int $setor, ?string $catatan): array
+{
+    if ($shift['pos'] === 'masuk') {
+        $sistem = 0; $setor = null; $selisih = null;
+    } else {
+        if ($setor === null || $setor < 0) throw new ParkirException('Isi jumlah uang setoran.', 'setor');
+        $sistem = total_cash_shift((int)$shift['id']);
+        $selisih = $setor - $sistem;
+    }
+    q('UPDATE shift SET waktu_tutup = ?, total_cash_sistem = ?, total_cash_setor = ?, selisih = ?, catatan = ? WHERE id = ?', [
+        now(), $sistem, $setor, $selisih, $catatan !== null && trim($catatan) !== '' ? mb_substr(trim($catatan), 0, 255) : null, $shift['id'],
+    ]);
+    return ['sistem' => $sistem, 'setor' => $setor, 'selisih' => $selisih];
 }
 
 /** Batalkan (void) tiket oleh admin. Tidak ada data yang dihapus. */

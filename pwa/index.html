@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="struk.css?v=9">
-<link rel="stylesheet" href="app.css?v=9">
+<link rel="stylesheet" href="struk.css?v=10">
+<link rel="stylesheet" href="app.css?v=10">
 </head>
 <body>
 
@@ -114,8 +114,11 @@
       </div>
       <form class="card stack" id="f-tutup">
         <h2>Tutup shift</h2>
-        <label class="field">Uang cash yang disetor (Rp)<input name="setor" type="number" inputmode="numeric" min="0" step="500" required></label>
-        <div id="selisih-preview" class="muted"></div>
+        <p class="muted small" id="tutup-info" hidden style="margin:0">Pos masuk tidak menerima uang, jadi tidak ada setoran. Tutup shift mencatat rekap tiket yang diterbitkan.</p>
+        <div id="tutup-uang" class="stack">
+          <label class="field">Uang cash yang disetor (Rp)<input name="setor" type="number" inputmode="numeric" min="0" step="500" required></label>
+          <div id="selisih-preview" class="muted"></div>
+        </div>
         <label class="field">Catatan<input name="catatan" maxlength="255" placeholder="Opsional"></label>
         <button class="btn danger xl">Tutup Shift</button>
       </form>
@@ -183,11 +186,11 @@
 
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
-<script src="versi.js?v=9"></script>
+<script src="versi.js?v=10"></script>
 <script src="js/tarif.js"></script>
-<script src="js/resi.js?v=9"></script>
-<script src="js/printer.js?v=9"></script>
+<script src="js/resi.js?v=10"></script>
+<script src="js/printer.js?v=10"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>

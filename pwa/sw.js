@@ -1,9 +1,9 @@
 /* Service worker: app shell bisa dibuka tanpa koneksi. API tidak pernah di-cache. */
-importScripts('versi.js?v=9');
+importScripts('versi.js?v=10');
 var VERSI = 'parkit-' + self.PARKIT_VERSI;
 var SHELL = [
-  './', 'index.html', 'versi.js?v=9', 'struk.css?v=9', 'app.css?v=9', 'manifest.webmanifest',
-  'js/app.js?v=9', 'js/tarif.js', 'js/resi.js?v=9', 'js/printer.js?v=9', 'js/outbox.js',
+  './', 'index.html', 'versi.js?v=10', 'struk.css?v=10', 'app.css?v=10', 'manifest.webmanifest',
+  'js/app.js?v=10', 'js/tarif.js', 'js/resi.js?v=10', 'js/printer.js?v=10', 'js/outbox.js',
   'vendor/qrcode.js', 'vendor/html5-qrcode.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
