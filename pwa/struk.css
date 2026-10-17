@@ -1,0 +1,41 @@
+/* Tampilan kertas thermal untuk bukti tiket/struk (PWA & pratinjau admin). */
+/* Bukti tiket/struk: tampilan kertas thermal 58 mm (pratinjau di layar & cetak browser) */
+.struk {
+  --tinta: #111;
+  background: #fff; color: var(--tinta);
+  font: clamp(11px, 3.3vw, 13px)/1.35 ui-monospace, "Roboto Mono", "Courier New", monospace;
+  width: 100%; max-width: 300px; margin: 0 auto; padding: 16px 14px 22px;
+  position: relative;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+}
+/* tepi bawah bergerigi seperti sobekan kertas */
+.struk::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 8px;
+  background: linear-gradient(-45deg, transparent 6px, #fff 0) 0 0 / 12px 8px repeat-x,
+              linear-gradient(45deg, transparent 6px, #fff 0) 0 0 / 12px 8px repeat-x;
+}
+.struk .s-judul { text-align: center; font-weight: 800; font-size: 17px; line-height: 1.25; letter-spacing: .02em; }
+.struk .s-c { text-align: center; overflow-wrap: anywhere; }
+.struk .s-b { font-weight: 800; }
+.struk .s-kecil { font-size: 11.5px; color: #333; }
+.struk .s-besar {
+  text-align: center; font: 800 26px/1.15 "DIN Alternate", "Arial Narrow", ui-monospace, monospace;
+  letter-spacing: .06em; margin: 6px auto; padding: 4px 10px; border: 2.5px solid var(--tinta); border-radius: 6px; width: fit-content;
+}
+.struk .s-kv { display: grid; grid-template-columns: 9.5ch 1fr; }
+.struk .s-kv span:last-child { overflow-wrap: anywhere; }
+.struk .s-lr { display: flex; justify-content: space-between; gap: 10px; }
+.struk .s-lr span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.struk .s-total { font-weight: 800; font-size: 18px; margin: 2px 0; }
+.struk .s-garis { border-top: 1.5px dashed var(--tinta); margin: 7px 0; }
+.struk .s-garis2 { border-top: 4px double var(--tinta); margin: 8px 0; }
+.struk .s-qr { display: flex; justify-content: center; margin: 8px 0 2px; }
+.struk .s-qr svg { width: 164px; height: 164px; }
+.struk .s-poin { padding-left: 14px; text-indent: -14px; font-size: 12px; }
+.struk .s-poin::before { content: "- "; }
+
+/* Kertas 80 mm: 48 kolom */
+.struk.w80 { max-width: 440px; padding: 18px 18px 24px; }
+.struk.w80 .s-kv { grid-template-columns: 11ch 1fr; }
+.struk.w80 .s-qr svg { width: 196px; height: 196px; }
+.struk.w80 .s-judul { font-size: 20px; }

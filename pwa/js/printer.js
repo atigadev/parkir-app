@@ -1,5 +1,5 @@
 /**
- * Cetak resi ke printer thermal 58 mm (32 karakter, 384 dot).
+ * Cetak resi ke printer thermal 56/58 mm (32 karakter, 384 titik) atau 80 mm (48 karakter, 576 titik).
  *  - bluetooth : Web Bluetooth + ESC/POS (Chrome Android, butuh HTTPS)
  *  - rawbt     : kirim ESC/POS ke aplikasi RawBT (Android) lewat intent
  *  - browser   : dialog cetak browser (cadangan)
@@ -11,7 +11,8 @@
 (function (global) {
   'use strict';
 
-  var LEBAR = 32;
+  // Diatur ulang setiap cetak sesuai lebar kertas: 32 kolom (56/58 mm) atau 48 kolom (80 mm).
+  var LEBAR = 32, TITIK = 384, FEED = 4;
   var SERVICES = [
     '000018f0-0000-1000-8000-00805f9b34fb',
     'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
@@ -49,7 +50,7 @@
   Builder.prototype.qr = function (data, dotsPerModule) {
     var q = Resi.qr(data);
     // ±37 mm: 8 titik (1 mm) per modul untuk tiket standar — tahan tinta thermal yang melebar
-    var n = q.getModuleCount(), scale = dotsPerModule || Math.max(2, Math.min(8, Math.floor(300 / (n + 4))));
+    var scale = dotsPerModule || Resi.skalaQr(q, TITIK);
     var pk = Resi.qrPiksel(q, scale, qrTipis()), size = pk.sisi;
     var bytesPerRow = Math.ceil(size / 8);
     this.align(1).push([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, bytesPerRow >> 8, size & 0xff, size >> 8]);
@@ -93,7 +94,7 @@
         }
       }
     }
-    return b.feed(4).cut().bytes();
+    return b.feed(FEED).cut().bytes();
   }
 
   /** Render daftar baris dari Resi.masuk/keluar ke byte ESC/POS. */
@@ -124,7 +125,7 @@
           b.align(0); bungkus(r[1], LEBAR - 2).forEach(function (x, i) { b.line((i ? '  ' : '- ') + x); }); break;
       }
     });
-    return b.feed(4).cut().bytes();
+    return b.feed(FEED).cut().bytes();
   }
 
   // ---------------------------------------------------------------- Bluetooth
@@ -144,6 +145,10 @@
   /** Ukuran paket Bluetooth (byte). 20 = aman untuk semua printer BLE. */
   /** Kompensasi pelebaran tinta QR (titik): 0 = tanpa, 1 = bawaan, 2 = printer sangat pekat. */
   function qrTipis() { var n = parseInt(opsi('printer_qr_tipis', '1'), 10); return n >= 0 && n <= 3 ? n : 1; }
+  /** Lebar kertas printer di HP ini: 'auto' (ikut pengaturan admin), '58' atau '80'. */
+  function kertasPerangkat() { var v = opsi('printer_kertas', 'auto'); return v === '58' || v === '80' ? v : 'auto'; }
+  /** Data kertas yang dipakai untuk mencetak (lihat Resi.KERTAS). */
+  function kertasAktif(cfg) { var v = kertasPerangkat(); return Resi.kertas(v === 'auto' ? Resi.opsi(cfg).kertas : v); }
   function ukuranPaket() { var n = parseInt(opsi('printer_paket', '20'), 10); return n > 0 ? n : 20; }
 
   function cariKarakteristik(server) {
@@ -223,9 +228,9 @@
    * mencetak halaman sebagai A4 lalu mengecilkannya ke 58 mm; dengan gambar 100% lebar,
    * teks ikut membesar proporsional sehingga tetap terbaca (tidak hanya QR yang tercetak).
    */
-  function tulisBrowser(rows) {
+  function tulisBrowser(rows, mm) {
     var el = document.getElementById('print-area');
-    el.innerHTML = '<img class="cetak-img" alt="" src="' + Resi.canvas(rows, 576, { qrTipis: qrTipis() }).toDataURL('image/png') + '">';
+    el.innerHTML = '<img class="cetak-img" alt="" src="' + Resi.canvas(rows, { mm: mm, skala: 1.5, qrTipis: qrTipis() }).toDataURL('image/png') + '">';
     var img = el.querySelector('img');
     return new Promise(function (res) {
       function go() { window.print(); res(); }
@@ -233,11 +238,13 @@
     });
   }
 
-  function kirim(rows) {
-    var m = mode();
+  function kirim(rows, cfg) {
+    var m = mode(), K = kertasAktif(cfg);
+    LEBAR = K.kolom; TITIK = K.titik;
+    FEED = Math.max(1, Math.min(10, parseInt(Resi.opsi(cfg).feed, 10) || 4));
     if (m === 'none') return Promise.resolve();
-    if (m === 'browser') return tulisBrowser(rows);
-    var bytes = sebagaiGambar() ? rasterDariCanvas(Resi.canvas(rows, 384, { qrTipis: qrTipis() })) : escpos(rows);
+    if (m === 'browser') return tulisBrowser(rows, K.mm);
+    var bytes = sebagaiGambar() ? rasterDariCanvas(Resi.canvas(rows, { mm: K.mm, qrTipis: qrTipis() })) : escpos(rows);
     if (m === 'rawbt') return tulisRawBT(bytes);
     return tulisBT(bytes);
   }
@@ -246,17 +253,18 @@
   /** Cetak; jenis = 'masuk' | 'keluar'. Menolak (reject) bila gagal agar pemanggil bisa mengantre. */
   function cetak(jenis, data, cfg) {
     try {
-      return kirim(jenis === 'masuk' ? Resi.masuk(data, cfg) : Resi.keluar(data, cfg));
+      return kirim(jenis === 'masuk' ? Resi.masuk(data, cfg) : Resi.keluar(data, cfg), cfg);
     } catch (e) {
       return Promise.reject(e);
     }
   }
 
   function tesCetak(cfg) {
+    var K = kertasAktif(cfg);
     var rows = [['judul', (cfg && cfg.nama_lokasi) || 'PARKIR'], ['garis2'], ['tebal', 'TES PRINTER'],
-      ['tengah', new Date().toLocaleString('id-ID')], ['kv', 'Lebar', LEBAR + ' karakter'], ['garis'],
-      ['tengah', '12345678901234567890123456789012'], ['qr', 'PK1-TES'], ['tebal', 'Printer siap dipakai']];
-    return kirim(rows);
+      ['tengah', new Date().toLocaleString('id-ID')], ['kv', 'Kertas', K.label + ' (' + K.kolom + ' kolom)'], ['garis'],
+      ['tengah', '1234567890123456789012345678901234567890123456789'.slice(0, K.kolom)], ['qr', 'PK1-TES'], ['tebal', 'Printer siap dipakai']];
+    return kirim(rows, cfg);
   }
 
   global.Printer = {
@@ -264,6 +272,7 @@
     status: status, mode: mode, setMode: setMode, onChange: function (f) { listeners.push(f); },
     sebagaiGambar: sebagaiGambar, setSebagaiGambar: function (v) { setOpsi('printer_gambar', v ? '1' : '0'); },
     ukuranPaket: ukuranPaket, setUkuranPaket: function (n) { setOpsi('printer_paket', n); },
-    qrTipis: qrTipis, setQrTipis: function (n) { setOpsi('printer_qr_tipis', n); }
+    qrTipis: qrTipis, setQrTipis: function (n) { setOpsi('printer_qr_tipis', n); },
+    kertasPerangkat: kertasPerangkat, setKertasPerangkat: function (v) { setOpsi('printer_kertas', v); }, kertasAktif: kertasAktif
   };
 })(window);

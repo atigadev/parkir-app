@@ -78,6 +78,47 @@ function setting(string $kunci, $default = '')
     return $cache[$kunci] ?? $default;
 }
 
+/** Pengaturan tampilan resi bawaan; harus sama dengan Resi.BAWAAN di pwa/js/resi.js. */
+function resi_config_bawaan(): array
+{
+    return [
+        'kertas'          => 58,
+        'feed'            => 4,
+        'header_tambahan' => '',
+        'masuk' => [
+            'judul' => 'TIKET PARKIR', 'jenis_di_judul' => true, 'no_tiket' => true, 'plat_besar' => true,
+            'gerbang' => true, 'petugas' => true, 'no_bawah_qr' => true, 'teks_qr' => 'Tunjukkan tiket ini saat keluar',
+            'tarif' => true, 'ketentuan' => true, 'judul_ketentuan' => 'KETENTUAN', 'denda' => true,
+        ],
+        'keluar' => [
+            'judul' => 'STRUK PARKIR', 'no_struk' => true, 'no_tiket' => true, 'plat_besar' => true, 'jenis' => true,
+            'durasi' => true, 'rincian' => true, 'tunai' => true, 'gerbang' => true, 'petugas' => true, 'waktu_cetak' => true,
+            'catatan' => 'Simpan struk ini sebagai bukti pembayaran yang sah',
+        ],
+    ];
+}
+
+/** Pengaturan tampilan resi (bawaan + yang disimpan admin), tipe data dijaga sesuai bawaan. */
+function resi_config(): array
+{
+    $simpan = json_decode((string)setting('resi_config', ''), true);
+    $gabung = function (array $dasar, $isi) use (&$gabung) {
+        $isi = is_array($isi) ? $isi : [];
+        foreach ($dasar as $k => $v) {
+            if (!array_key_exists($k, $isi)) continue;
+            if (is_array($v)) $dasar[$k] = $gabung($v, $isi[$k]);
+            elseif (is_bool($v)) $dasar[$k] = (bool)$isi[$k];
+            elseif (is_int($v)) $dasar[$k] = (int)$isi[$k];
+            else $dasar[$k] = mb_substr((string)$isi[$k], 0, 200);
+        }
+        return $dasar;
+    };
+    $c = $gabung(resi_config_bawaan(), $simpan);
+    $c['kertas'] = $c['kertas'] === 80 ? 80 : 58;
+    $c['feed'] = max(1, min(10, $c['feed']));
+    return $c;
+}
+
 function set_setting(string $kunci, string $nilai): void
 {
     q('INSERT INTO pengaturan (kunci, nilai) VALUES (?, ?) ON DUPLICATE KEY UPDATE nilai = VALUES(nilai)', [$kunci, $nilai]);

@@ -125,6 +125,7 @@ function konfigurasi_klien(): array
         'alamat_lokasi' => setting('alamat_lokasi'),
         'footer_resi'   => setting('footer_resi'),
         'footer_struk'  => setting('footer_struk', 'Terima kasih atas kunjungan Anda'),
+        'resi'          => resi_config(),
         'telepon_lokasi'=> setting('telepon_lokasi'),
         'qris_gambar'   => $qris ? base_url($qris) . '?v=' . @filemtime(APP_ROOT . '/' . $qris) : null,
         'qris_merchant' => setting('qris_nama_merchant'),

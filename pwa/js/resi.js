@@ -1,26 +1,61 @@
 /**
  * Isi tiket masuk & struk keluar. Disusun sekali sebagai daftar baris, lalu dirender ke:
- *  - ESC/POS (printer thermal 58 mm)  -> Printer
- *  - HTML (pratinjau bukti di layar & dialog cetak browser) -> Resi.html()
+ *  - ESC/POS (printer thermal)                 -> Printer.escpos()
+ *  - gambar (raster ESC/POS & dialog cetak)    -> Resi.canvas()
+ *  - HTML (bukti di layar & pratinjau admin)   -> Resi.html()
  * sehingga yang dicetak selalu sama dengan yang terlihat di layar.
  *
+ * Isi & tampilan diatur admin di menu "Tampilan Resi" (config.resi), lebar kertas 56/58 mm atau 80 mm.
+ *
  * Jenis baris:
- *  ['judul', teks]      nama lokasi, tebal & tinggi ganda, tengah
- *  ['tengah', teks]     teks biasa rata tengah (dibungkus otomatis)
+ *  ['judul', teks]      nama lokasi, tebal & besar, tengah
+ *  ['tengah', teks]     teks rata tengah (dibungkus otomatis)
  *  ['tebal', teks]      teks tebal rata tengah
- *  ['besar', teks]      teks ukuran ganda tebal rata tengah (plat)
+ *  ['besar', teks]      teks ukuran ganda dalam kotak (plat)
  *  ['kv', label, nilai] "Label    : nilai"
  *  ['lr', kiri, kanan]  kiri & kanan rata
- *  ['total', kiri, kanan] seperti lr, tebal & tinggi ganda
+ *  ['total', kiri, kanan] seperti lr, tebal & besar
  *  ['garis'] / ['garis2']  pemisah - / =
  *  ['qr', data]         kode QR
  *  ['poin', teks]       butir ketentuan "- ..." (dibungkus)
- *  ['kecil', teks]      teks kecil rata tengah
+ *  ['kecil', teks]      teks keterangan rata tengah
  */
 (function (global) {
   'use strict';
 
-  var LEBAR = 32;
+  /** Lebar kertas yang didukung. 56 mm dan 58 mm memakai area cetak yang sama (48 mm). */
+  var KERTAS = {
+    58: { mm: 58, label: '56/58 mm', kolom: 32, titik: 384 },
+    80: { mm: 80, label: '80 mm', kolom: 48, titik: 576 }
+  };
+
+  /** Pengaturan bawaan; harus sama dengan resi_config_bawaan() di inc/helpers.php. */
+  var BAWAAN = {
+    kertas: 58,
+    feed: 4,
+    header_tambahan: '',
+    masuk: {
+      judul: 'TIKET PARKIR', jenis_di_judul: true, no_tiket: true, plat_besar: true,
+      gerbang: true, petugas: true, no_bawah_qr: true, teks_qr: 'Tunjukkan tiket ini saat keluar',
+      tarif: true, ketentuan: true, judul_ketentuan: 'KETENTUAN', denda: true
+    },
+    keluar: {
+      judul: 'STRUK PARKIR', no_struk: true, no_tiket: true, plat_besar: true, jenis: true,
+      durasi: true, rincian: true, tunai: true, gerbang: true, petugas: true, waktu_cetak: true,
+      catatan: 'Simpan struk ini sebagai bukti pembayaran yang sah'
+    }
+  };
+
+  function gabung(dasar, tambahan) {
+    var o = {};
+    Object.keys(dasar).forEach(function (k) {
+      var v = tambahan && Object.prototype.hasOwnProperty.call(tambahan, k) ? tambahan[k] : undefined;
+      o[k] = dasar[k] && typeof dasar[k] === 'object' ? gabung(dasar[k], v) : (v === undefined || v === null ? dasar[k] : v);
+    });
+    return o;
+  }
+  function opsi(cfg) { return gabung(BAWAAN, cfg && cfg.resi); }
+  function kertas(mm) { return KERTAS[+mm === 80 ? 80 : 58]; }
 
   function rp(n) { return 'Rp' + Number(n || 0).toLocaleString('id-ID'); }
   function dua(n) { return ('0' + n).slice(-2); }
@@ -29,6 +64,7 @@
     var d = Tarif.parse(s);
     return dua(d.getDate()) + '/' + dua(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + dua(d.getHours()) + ':' + dua(d.getMinutes()) + ':' + dua(d.getSeconds());
   }
+
   /**
    * Matriks QR untuk dicetak. Kode tiket ditulis huruf besar agar memakai mode alphanumeric:
    * QR lebih sederhana (33 modul vs 37), sehingga tiap modul bisa dicetak lebih besar dan tetap
@@ -65,13 +101,20 @@
     };
   }
 
+  /** Titik per modul QR: ±37 mm di kertas 58 mm, ±45 mm di kertas 80 mm. */
+  function skalaQr(q, titikKertas) {
+    var target = titikKertas >= 576 ? 360 : 300;
+    return Math.max(2, Math.min(10, Math.floor(target / (q.getModuleCount() + 4))));
+  }
+
   function kapital(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
   function noTiket(id) { return String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase().replace(/^(.{4})(.{4})$/, '$1-$2'); }
 
-  function kepala(cfg) {
+  function kepala(cfg, o) {
     var r = [['judul', cfg.nama_lokasi || 'PARKIR']];
     if (cfg.alamat_lokasi) r.push(['tengah', cfg.alamat_lokasi]);
     if (cfg.telepon_lokasi) r.push(['tengah', 'Telp. ' + cfg.telepon_lokasi]);
+    String(o.header_tambahan || '').split(/\r?\n/).forEach(function (b) { if (b.trim()) r.push(['tengah', b.trim()]); });
     r.push(['garis2']);
     return r;
   }
@@ -92,71 +135,83 @@
   /** Tiket masuk (diberikan ke pengendara). */
   function masuk(t, cfg) {
     cfg = cfg || {};
+    var o = opsi(cfg), m = o.masuk;
     var no = t.no_tiket || noTiket(t.id);
-    var r = kepala(cfg);
-    r.push(['tebal', 'TIKET PARKIR ' + String(t.jenis || '').toUpperCase()]);
+    var r = kepala(cfg, o);
+    r.push(['tebal', (m.judul || 'TIKET PARKIR') + (m.jenis_di_judul ? ' ' + String(t.jenis || '').toUpperCase() : '')]);
     if (t.offline) r.push(['kecil', '(dibuat saat offline)']);
     r.push(['garis']);
-    r.push(['kv', 'No. Tiket', no]);
-    r.push(['besar', t.plat]);
+    if (m.no_tiket) r.push(['kv', 'No. Tiket', no]);
+    r.push([m.plat_besar ? 'besar' : 'tebal', t.plat]);
+    if (!m.jenis_di_judul) r.push(['kv', 'Jenis', kapital(t.jenis)]);
     r.push(['kv', 'Masuk', tgl(t.waktu_masuk)]);
-    r.push(['kv', 'Gerbang', t.pos_masuk || '-']);
-    r.push(['kv', 'Petugas', t.petugas || '-']);
+    if (m.gerbang) r.push(['kv', 'Gerbang', t.pos_masuk || '-']);
+    if (m.petugas) r.push(['kv', 'Petugas', t.petugas || '-']);
     r.push(['qr', t.kode_qr]);
-    r.push(['tebal', no]);
-    r.push(['kecil', 'Tunjukkan tiket ini saat keluar']);
-    r.push(['garis']);
-    var tarif = infoTarif(cfg, t.jenis);
-    if (tarif) { r.push(['kecil', tarif]); r.push(['garis']); }
-    r.push(['tebal', 'KETENTUAN']);
-    String(cfg.footer_resi || 'Simpan tiket ini dengan baik').split(/\r?\n/).forEach(function (b) {
+    if (m.no_bawah_qr) r.push(['tebal', no]);
+    if (m.teks_qr) r.push(['kecil', m.teks_qr]);
+    var tarif = m.tarif && infoTarif(cfg, t.jenis);
+    if (tarif) { r.push(['garis']); r.push(['kecil', tarif]); }
+    var poin = [];
+    if (m.ketentuan) String(cfg.footer_resi || '').split(/\r?\n/).forEach(function (b) {
       b = b.trim();
-      if (b && !/denda/i.test(b)) r.push(['poin', b]);
+      if (b && !(m.denda && /denda/i.test(b))) poin.push(b);
     });
     var denda = cfg.denda && cfg.denda[t.jenis];
-    if (denda) r.push(['poin', 'Tiket hilang dikenakan denda ' + rp(denda) + ' dan wajib menunjukkan STNK']);
+    if (m.denda && denda) poin.push('Tiket hilang dikenakan denda ' + rp(denda) + ' dan wajib menunjukkan STNK');
+    if (poin.length) {
+      r.push(['garis']);
+      if (m.judul_ketentuan) r.push(['tebal', m.judul_ketentuan]);
+      poin.forEach(function (p) { r.push(['poin', p]); });
+    }
     return r;
   }
 
   /** Struk keluar / bukti pembayaran. */
   function keluar(s, cfg) {
     cfg = cfg || {};
-    var r = kepala(cfg);
-    r.push(['tebal', 'STRUK PARKIR']);
+    var o = opsi(cfg), k = o.keluar;
+    var r = kepala(cfg, o);
+    r.push(['tebal', k.judul || 'STRUK PARKIR']);
     if (s.offline) r.push(['kecil', '(dibuat saat offline)']);
     r.push(['garis']);
-    r.push(['kv', 'No. Struk', s.no_struk || 'OFFLINE']);
-    r.push(['kv', 'No. Tiket', s.no_tiket || '-']);
-    r.push(['besar', s.plat || '-']);
-    r.push(['kv', 'Jenis', kapital(s.jenis)]);
+    if (k.no_struk) r.push(['kv', 'No. Struk', s.no_struk || 'OFFLINE']);
+    if (k.no_tiket) r.push(['kv', 'No. Tiket', s.no_tiket || '-']);
+    r.push([k.plat_besar ? 'besar' : 'tebal', s.plat || '-']);
+    if (k.jenis) r.push(['kv', 'Jenis', kapital(s.jenis)]);
     r.push(['kv', 'Masuk', tgl(s.waktu_masuk)]);
     r.push(['kv', 'Keluar', tgl(s.waktu_keluar)]);
-    r.push(['kv', 'Durasi', Tarif.durasiTeks(s.durasi_menit)]);
+    if (k.durasi) r.push(['kv', 'Durasi', Tarif.durasiTeks(s.durasi_menit)]);
     r.push(['garis']);
-    (s.rincian || []).forEach(function (x) { r.push(['lr', x[0], rp(x[1])]); });
-    r.push(['garis']);
+    if (k.rincian && (s.rincian || []).length) {
+      s.rincian.forEach(function (x) { r.push(['lr', x[0], rp(x[1])]); });
+      r.push(['garis']);
+    }
     r.push(['total', 'TOTAL', rp(s.total)]);
-    if (s.metode === 'cash' && s.tunai) {
+    if (k.tunai && s.metode === 'cash' && s.tunai) {
       r.push(['lr', 'Tunai', rp(s.tunai)]);
       r.push(['lr', 'Kembali', rp(s.tunai - s.total)]);
     }
     r.push(['lr', 'Pembayaran', s.metode === 'qris' ? 'QRIS' : 'TUNAI']);
     if (s.tanpa_tiket) r.push(['kecil', 'Keluar tanpa tiket (verifikasi STNK)']);
-    r.push(['garis']);
-    r.push(['kv', 'Gerbang', s.pos_keluar || '-']);
-    r.push(['kv', 'Petugas', s.petugas || '-']);
-    r.push(['kv', 'Dicetak', tgl(Tarif.fmt(new Date()))]);
+    if (k.gerbang || k.petugas || k.waktu_cetak) {
+      r.push(['garis']);
+      if (k.gerbang) r.push(['kv', 'Gerbang', s.pos_keluar || '-']);
+      if (k.petugas) r.push(['kv', 'Petugas', s.petugas || '-']);
+      if (k.waktu_cetak) r.push(['kv', 'Dicetak', tgl(Tarif.fmt(new Date()))]);
+    }
     r.push(['garis2']);
-    r.push(['tebal', cfg.footer_struk || 'Terima kasih atas kunjungan Anda']);
-    r.push(['kecil', 'Simpan struk ini sebagai bukti pembayaran yang sah']);
+    if (cfg.footer_struk) r.push(['tebal', cfg.footer_struk]);
+    if (k.catatan) r.push(['kecil', k.catatan]);
     return r;
   }
 
   // ---------------------------------------------------------------- render HTML
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
-  function html(rows) {
-    return '<div class="struk">' + rows.map(function (b) {
+  /** HTML bergaya kertas thermal. `mm` = 58 atau 80. */
+  function html(rows, mm) {
+    return '<div class="struk' + (kertas(mm).mm === 80 ? ' w80' : '') + '">' + rows.map(function (b) {
       switch (b[0]) {
         case 'judul': return '<div class="s-judul">' + esc(b[1]) + '</div>';
         case 'tengah': return '<div class="s-c">' + esc(b[1]) + '</div>';
@@ -193,54 +248,57 @@
   }
 
   /**
-   * Gambar tiket/struk ke canvas hitam-putih selebar `lebarPx` titik (384 = kertas 58 mm @203 dpi).
+   * Gambar tiket/struk ke canvas hitam-putih.
+   * p.mm      : 58 / 80 (lebar kertas, menentukan jumlah kolom)
+   * p.skala   : pengali resolusi (1 = titik printer; >1 untuk dialog cetak browser)
+   * p.qrTipis : kompensasi pelebaran tinta QR (titik printer)
    * Dipakai untuk cetak sebagai gambar (raster ESC/POS) dan dialog cetak browser, agar teks selalu
    * tercetak setebal QR di printer apa pun dan pada ukuran kertas apa pun.
    */
-  function canvas(rows, lebarPx, opsiCetak) {
-    var erosi = (opsiCetak && opsiCetak.qrTipis) || 0;
-    var W = lebarPx || 384, PAD = 6, LBL = 10;
+  function canvas(rows, p) {
+    p = p || {};
+    var K = kertas(p.mm), skala = p.skala || 1, KOL = K.kolom;
+    var W = Math.round(K.titik * skala), PAD = Math.round(6 * skala), LBL = 10;
     var c = document.createElement('canvas'), x = c.getContext('2d');
     var FONT = '"Courier New", "Roboto Mono", monospace';
-    // Ukuran huruf agar tepat LEBAR (32) karakter per baris
+    // Ukuran huruf agar tepat KOL karakter per baris
     x.font = 'bold 20px ' + FONT;
-    var fs = Math.floor(20 * (W - PAD * 2) / x.measureText(new Array(LEBAR + 1).join('M')).width);
+    var fs = Math.floor(20 * (W - PAD * 2) / x.measureText(new Array(KOL + 1).join('M')).width);
     var lh = Math.round(fs * 1.25);
-    var cw = (W - PAD * 2) / LEBAR;
+    var cw = (W - PAD * 2) / KOL;
 
     function jalankan(gambar) {
       var y = PAD;
-      function teks(s, size, align, tebal) {
+      function teks(s, size, align) {
         if (gambar) {
-          x.font = (tebal ? 'bold ' : '') + size + 'px ' + FONT;
+          x.font = 'bold ' + size + 'px ' + FONT;
           x.textAlign = align; x.textBaseline = 'top';
           x.fillText(s, align === 'center' ? W / 2 : align === 'right' ? W - PAD : PAD, y + (lh * size / fs - size) / 2);
         }
         y += Math.round(lh * size / fs);
       }
-      function garis(tebal, ganda) {
+      function garis(ganda) {
+        var t = Math.max(2, Math.round(2 * skala));
         if (gambar) {
           x.fillStyle = '#000';
-          if (ganda) { x.fillRect(PAD, y + 4, W - PAD * 2, 2); x.fillRect(PAD, y + 9, W - PAD * 2, 2); }
-          else for (var gx = PAD; gx < W - PAD; gx += 10) x.fillRect(gx, y + 6, 6, tebal);
+          if (ganda) { x.fillRect(PAD, y + 2 * t, W - PAD * 2, t); x.fillRect(PAD, y + 4.5 * t, W - PAD * 2, t); }
+          else for (var gx = PAD; gx < W - PAD; gx += 5 * t) x.fillRect(gx, y + 3 * t, 3 * t, t);
         }
-        y += 14;
+        y += 7 * t;
       }
       rows.forEach(function (r) {
         switch (r[0]) {
-          case 'judul': bungkus(r[1], Math.floor(LEBAR / 1.35)).forEach(function (s) { teks(s, Math.round(fs * 1.35), 'center', true); }); y += 2; break;
-          case 'tengah': bungkus(r[1], LEBAR).forEach(function (s) { teks(s, fs, 'center', true); }); break;
-          case 'kecil': bungkus(r[1], LEBAR).forEach(function (s) { teks(s, fs, 'center', true); }); break;
-          case 'tebal': bungkus(r[1], LEBAR).forEach(function (s) { teks(s, fs, 'center', true); }); break;
+          case 'judul': bungkus(r[1], Math.floor(KOL / 1.35)).forEach(function (s) { teks(s, Math.round(fs * 1.35), 'center'); }); y += 2; break;
+          case 'tengah': case 'kecil': case 'tebal': bungkus(r[1], KOL).forEach(function (s) { teks(s, fs, 'center'); }); break;
           case 'besar':
-            var bs = Math.round(fs * 2), lebarTeks = 0;
-            if (gambar) { x.font = 'bold ' + bs + 'px ' + FONT; lebarTeks = Math.min(W - PAD * 2, x.measureText(r[1]).width + 24); }
-            y += 6;
-            if (gambar) { x.lineWidth = 4; x.strokeRect((W - lebarTeks) / 2, y - 2, lebarTeks, Math.round(lh * 2) + 4); }
-            teks(r[1], bs, 'center', true);
-            y += 10; break;
+            var bs = Math.round(fs * 2), lebarTeks = 0, tb = Math.max(3, Math.round(4 * skala));
+            if (gambar) { x.font = 'bold ' + bs + 'px ' + FONT; lebarTeks = Math.min(W - PAD * 2, x.measureText(r[1]).width + 24 * skala); }
+            y += Math.round(6 * skala);
+            if (gambar) { x.lineWidth = tb; x.strokeRect((W - lebarTeks) / 2, y - 2, lebarTeks, Math.round(lh * 2) + 4); }
+            teks(r[1], bs, 'center');
+            y += Math.round(10 * skala); break;
           case 'kv':
-            bungkus(r[2], LEBAR - LBL - 2).forEach(function (s, i) {
+            bungkus(r[2], KOL - LBL - 2).forEach(function (s, i) {
               if (gambar) { x.font = 'bold ' + fs + 'px ' + FONT; x.textAlign = 'left'; x.textBaseline = 'top';
                 x.fillText(i ? '' : r[1], PAD, y); x.fillText((i ? '  ' : ': ') + s, PAD + cw * LBL, y); }
               y += lh;
@@ -251,24 +309,22 @@
             if (gambar) { x.font = 'bold ' + sz + 'px ' + FONT; x.textBaseline = 'top';
               x.textAlign = 'left'; x.fillText(r[1], PAD, y); x.textAlign = 'right'; x.fillText(r[2], W - PAD, y); }
             y += Math.round(lh * sz / fs); break;
-          case 'garis': garis(2, false); break;
-          case 'garis2': garis(2, true); break;
+          case 'garis': garis(false); break;
+          case 'garis2': garis(true); break;
           case 'qr':
-            var q = qr(r[1]);
-            // ±37 mm di kertas 58 mm (1 mm per modul untuk tiket standar)
-            var n = q.getModuleCount(), m = Math.max(2, Math.floor(Math.min(W * 300 / 384, W - PAD * 2) / (n + 4))), sisi = m * (n + 4);
-            var ox = Math.round((W - sisi) / 2);
+            var q = qr(r[1]), m = Math.round(skalaQr(q, K.titik) * skala), pk = qrPiksel(q, m, Math.round((p.qrTipis || 0) * skala));
+            var sisi = pk.sisi, ox = Math.round((W - sisi) / 2);
             if (gambar) {
-              var pk = qrPiksel(q, m, Math.round(erosi * W / 384)), img = x.createImageData(sisi, sisi);
+              var img = x.createImageData(sisi, sisi);
               for (var py = 0; py < sisi; py++) for (var pxl = 0; pxl < sisi; pxl++) {
                 var v = pk.gelap(pxl, py) ? 0 : 255, ip = (py * sisi + pxl) * 4;
                 img.data[ip] = img.data[ip + 1] = img.data[ip + 2] = v; img.data[ip + 3] = 255;
               }
               x.putImageData(img, ox, y);
             }
-            y += sisi + 4; break;
+            y += sisi + Math.round(4 * skala); break;
           case 'poin':
-            bungkus(r[1], LEBAR - 2).forEach(function (s, i) {
+            bungkus(r[1], KOL - 2).forEach(function (s, i) {
               if (gambar) { x.font = 'bold ' + fs + 'px ' + FONT; x.textAlign = 'left'; x.textBaseline = 'top'; x.fillText((i ? '  ' : '- ') + s, PAD, y); }
               y += lh;
             });
@@ -286,5 +342,9 @@
     return c;
   }
 
-  global.Resi = { masuk: masuk, keluar: keluar, html: html, canvas: canvas, bungkus: bungkus, qr: qr, qrPiksel: qrPiksel, noTiket: noTiket, rp: rp, LEBAR: LEBAR };
+  global.Resi = {
+    masuk: masuk, keluar: keluar, html: html, canvas: canvas, bungkus: bungkus,
+    qr: qr, qrPiksel: qrPiksel, skalaQr: skalaQr, noTiket: noTiket, rp: rp,
+    KERTAS: KERTAS, BAWAAN: BAWAAN, opsi: opsi, kertas: kertas
+  };
 })(window);

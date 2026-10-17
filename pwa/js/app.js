@@ -300,7 +300,7 @@
   function tampilBukti(jenis, data, key, opsi) {
     opsi = opsi || {};
     var rows = jenis === 'masuk' ? Resi.masuk(data, S.config || {}) : Resi.keluar(data, S.config || {});
-    var el = bukaSheet('<div class="bukti-wrap" id="bukti-wrap">' + Resi.html(rows) + '</div>' +
+    var el = bukaSheet('<div class="bukti-wrap" id="bukti-wrap">' + Resi.html(rows, Printer.kertasAktif(S.config || {}).mm) + '</div>' +
       '<div class="bukti-aksi"><div class="cetak-status" id="cetak-status"></div>' +
       '<div class="row"><button class="btn ghost grow" id="b-cetak-ulang">🖨 Cetak ulang</button>' +
       '<button class="btn primary grow" id="b-bukti-ok">Selesai</button></div></div>', opsi.onSelesai);
@@ -879,6 +879,9 @@
     $('#cek-gambar').checked = Printer.sebagaiGambar();
     $('#sel-paket').value = String(Printer.ukuranPaket());
     $('#opsi-qr').hidden = st.mode === 'none';
+    $('#sel-kertas').value = Printer.kertasPerangkat();
+    var kAdmin = Resi.kertas(Resi.opsi(S.config || {}).kertas);
+    $('#sel-kertas').options[0].textContent = 'Ikuti pengaturan admin (' + kAdmin.label + ')';
     $('#sel-qr').value = String(Printer.qrTipis());
     info.textContent = st.mode === 'bluetooth'
       ? (navigator.bluetooth ? (st.connected ? 'Terhubung: ' + (st.name || 'printer') : 'Belum terhubung. Nyalakan printer lalu tekan Hubungkan. Bila printer tidak muncul di daftar, printer hanya Bluetooth klasik: pakai mode RawBT.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
@@ -889,6 +892,7 @@
   $('#cek-gambar').addEventListener('change', function (e) { Printer.setSebagaiGambar(e.target.checked); });
   $('#sel-paket').addEventListener('change', function (e) { Printer.setUkuranPaket(e.target.value); });
   $('#sel-qr').addEventListener('change', function (e) { Printer.setQrTipis(e.target.value); });
+  $('#sel-kertas').addEventListener('change', function (e) { Printer.setKertasPerangkat(e.target.value); renderPrinter(); });
   $('#btn-pilih-printer').addEventListener('click', function () {
     Printer.pilih().then(function () { toast('Printer terhubung', 'ok'); renderPrinter(); }).catch(function (e) { toast(e.message, 'bad', 4000); });
   });

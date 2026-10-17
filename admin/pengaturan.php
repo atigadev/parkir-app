@@ -3,7 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/../inc/admin.php';
 wajib_admin();
 
-$kunci = ['nama_lokasi', 'alamat_lokasi', 'telepon_lokasi', 'footer_resi', 'footer_struk', 'denda_tanpa_tiket_motor', 'denda_tanpa_tiket_mobil', 'qris_nama_merchant', 'ocr_url', 'ocr_timeout', 'ocr_ambang', 'retensi_foto_hari'];
+$kunci = ['denda_tanpa_tiket_motor', 'denda_tanpa_tiket_mobil', 'qris_nama_merchant', 'ocr_url', 'ocr_timeout', 'ocr_ambang', 'retensi_foto_hari'];
 
 if (is_post()) {
     cek_csrf();
@@ -55,13 +55,9 @@ layout_atas('Pengaturan', 'pengaturan.php');
   <?= csrf_field() ?>
   <div class="grid g2">
     <div class="card">
-      <div class="card-h"><h2>Lokasi & resi</h2></div>
+      <div class="card-h"><h2>Denda & tampilan resi</h2><a class="btn sm ghost" href="resi.php">Atur tampilan resi →</a></div>
       <div class="card-b" style="display:grid;gap:12px">
-        <label class="f">Nama lokasi<small>Tercetak di bagian atas resi</small><input name="nama_lokasi" value="<?= e(setting('nama_lokasi')) ?>" maxlength="32" required></label>
-        <label class="f">Alamat<input name="alamat_lokasi" value="<?= e(setting('alamat_lokasi')) ?>" maxlength="64"></label>
-        <label class="f">Telepon / kontak pengelola<small>Opsional, tercetak di bawah alamat</small><input name="telepon_lokasi" value="<?= e(setting('telepon_lokasi')) ?>" maxlength="32"></label>
-        <label class="f">Ketentuan di tiket masuk<small>Satu ketentuan per baris. Baris denda tiket hilang ditambahkan otomatis sesuai jenis kendaraan.</small><textarea name="footer_resi" rows="4" maxlength="400"><?= e(setting('footer_resi')) ?></textarea></label>
-        <label class="f">Penutup struk keluar<input name="footer_struk" value="<?= e(setting('footer_struk', 'Terima kasih atas kunjungan Anda')) ?>" maxlength="64"></label>
+        <p class="muted" style="margin:0">Nama lokasi, alamat, telepon, ketentuan tiket, penutup struk, dan lebar kertas (56/58 mm atau 80 mm) diatur di menu <a href="resi.php">Tampilan Resi</a>, lengkap dengan pratinjau.</p>
         <div class="form-grid">
           <label class="f">Denda tanpa tiket — motor<input type="number" min="0" step="500" name="denda_tanpa_tiket_motor" value="<?= e(setting('denda_tanpa_tiket_motor')) ?>"></label>
           <label class="f">Denda tanpa tiket — mobil<input type="number" min="0" step="500" name="denda_tanpa_tiket_mobil" value="<?= e(setting('denda_tanpa_tiket_mobil')) ?>"></label>

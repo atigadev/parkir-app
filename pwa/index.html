@@ -9,7 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=6">
+<link rel="stylesheet" href="struk.css?v=7">
+<link rel="stylesheet" href="app.css?v=7">
 </head>
 <body>
 
@@ -125,6 +126,13 @@
             <option value="none">Tanpa cetak</option>
           </select>
         </label>
+        <label class="field" id="opsi-kertas">Lebar kertas printer ini
+          <select id="sel-kertas">
+            <option value="auto">Ikuti pengaturan admin</option>
+            <option value="58">56/58 mm (32 karakter)</option>
+            <option value="80">80 mm (48 karakter)</option>
+          </select>
+        </label>
         <label class="cek" id="opsi-gambar"><input type="checkbox" id="cek-gambar">
           <span><b>Cetak sebagai gambar</b><small>Aktifkan bila hanya QR yang tercetak atau teks hilang/berantakan. Lewat Bluetooth langsung lebih lambat (±10–20 detik); paling cocok dengan RawBT.</small></span></label>
         <label class="field" id="opsi-qr">Ketebalan QR
@@ -173,9 +181,9 @@
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
 <script src="js/tarif.js"></script>
-<script src="js/resi.js?v=6"></script>
-<script src="js/printer.js?v=6"></script>
+<script src="js/resi.js?v=7"></script>
+<script src="js/printer.js?v=7"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/app.js?v=7"></script>
 </body>
 </html>
