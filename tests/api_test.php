@@ -6,13 +6,16 @@
  *
  * Membuat akun & data uji sementara (petugas id 990–993, plat "QA ...") lalu menghapusnya.
  * HANYA untuk server lokal/staging: menolak berjalan ke alamat selain localhost kecuali diberi --yakin.
+ * --server-bawaan: untuk php -S (tanpa .htaccess) — uji blokir akses langsung folder foto dilewati.
  */
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') exit;
 $_SERVER['DOCUMENT_ROOT'] = dirname(__DIR__, 2);
 require __DIR__ . '/../inc/bootstrap.php';
 
-$args = array_values(array_filter(array_slice($argv, 1), function ($a) { return $a !== '--yakin'; }));
+$args = array_values(array_filter(array_slice($argv, 1), function ($a) { return $a[0] !== '-'; }));
+// --server-bawaan: server bawaan PHP (php -S) tidak membaca .htaccess, jadi uji blokir folder dilewati.
+$SERVER_BAWAAN = in_array('--server-bawaan', $argv, true);
 $BASE = rtrim($args[0] ?? 'http://localhost/parkit-app', '/');
 if (!preg_match('#^https?://(localhost|127\.0\.0\.1)([:/]|$)#', $BASE) && !in_array('--yakin', $argv, true)) {
     fwrite(STDERR, "Menolak menguji $BASE (bukan localhost). Tambahkan --yakin bila ini server staging.\n");
@@ -42,7 +45,6 @@ function api(string $rute, ?string $token = null, $body = null, array $header = 
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $h, CURLOPT_TIMEOUT => 20]);
     $res = curl_exec($ch);
     $kode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
     $j = json_decode((string)$res, true) ?: ['ok' => false, 'error' => 'respons bukan JSON: ' . substr((string)$res, 0, 120)];
     $j['_http'] = $kode;
     return $j;
@@ -169,17 +171,31 @@ try {
     $im = imagecreatetruecolor(64, 48); imagejpeg($im, $jpg);
     $tf = api('masuk', $tm, ['_form' => ['plat' => 'QA 7 AA', 'jenis' => 'motor', 'paksa' => '1', 'foto' => new CURLFile($jpg, 'image/jpeg', 'f.jpg')]])['data'] ?? [];
     @unlink($jpg);
-    $get = function (string $url): int { $c = curl_init($url); curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]); curl_exec($c); $k = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); curl_close($c); return $k; };
+    $get = function (string $url): int { $c = curl_init($url); curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]); curl_exec($c); $k = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); return $k; };
     $host = preg_replace('#^(https?://[^/]+).*$#', '$1', $BASE);
     $path = (string)q_val('SELECT foto_masuk_url FROM kendaraan_masuk WHERE id = ?', [$tf['id'] ?? '']);
     $url = (string)($tf['foto'] ?? '');
     cek('#7a. API memberi URL foto bertanda tangan (foto.php)', strpos($url, 'foto.php?f=') !== false);
     cek('#7b. URL bertanda tangan bisa dibuka', $url !== '' && $get($host . $url) === 200);
-    cek('#7c. akses langsung ke folder uploads/foto ditolak', $path !== '' && $get("$BASE/$path") === 403);
+    if (!$SERVER_BAWAAN) cek('#7c. akses langsung ke folder uploads/foto ditolak', $path !== '' && $get("$BASE/$path") === 403);
     cek('#7d. tanda tangan diubah ditolak', $get($host . preg_replace('/s=[0-9a-f]{4}/', 's=0000', $url)) === 403);
     $exp = time() - 60;
     cek('#7e. tautan kedaluwarsa ditolak', $get("$BASE/foto.php?f=" . rawurlencode($path) . "&e=$exp&s=" . tanda_foto($path, $exp)) === 410);
     if ($path) @unlink(APP_ROOT . '/' . $path);
+
+    // ---------------------------------------------------------------- #11 #12 kondisi HP (jam & antrean offline)
+    $hdr = ['X-App-Versi: v13', 'X-Antrean: 4', 'X-Antrean-Umur: 45', 'X-Jam-HP: ' . (int)round((microtime(true) - 600) * 1000)];
+    api('me', $tm, null, $hdr);
+    $kond = q_one('SELECT antrean_offline, antrean_sejak, jam_selisih_detik FROM petugas WHERE id = 990');
+    cek('#11. jam HP 10 mnt lebih lambat terdeteksi & tercatat', $kond && abs((int)$kond['jam_selisih_detik'] + 600) <= 5, ($kond['jam_selisih_detik'] ?? '?') . ' dtk');
+    cek('#12a. antrean offline HP tercatat (jumlah & sejak kapan)', $kond && (int)$kond['antrean_offline'] === 4 && abs(strtotime((string)$kond['antrean_sejak']) - (time() - 2700)) <= 90);
+    $judul = array_column(daftar_perhatian(), 'judul');
+    cek('#12b. panel Perlu perhatian menampilkan antrean tertahan & jam tidak sinkron',
+        (bool)preg_grep('/Antrean offline tertahan di HP QA qa_masuk/', $judul) && (bool)preg_grep('/Jam HP QA qa_masuk tidak sinkron/', $judul));
+
+    // ---------------------------------------------------------------- #14 ping
+    $p = api('ping');
+    cek('#14. endpoint ping (tanpa login) melaporkan sehat', ($p['ok'] ?? false) && ($p['data']['status'] ?? '') === 'sehat' && $p['_http'] === 200);
 
     // ---------------------------------------------------------------- #9 CSV
     cek('#9. CSV: teks berawalan = + - @ dinetralkan, angka negatif tetap angka', csv_aman('=HYPERLINK("x")') === "'=HYPERLINK(\"x\")" && csv_aman('-1000') === '-1000' && csv_aman(-1000) === -1000 && csv_aman('Shift pagi') === 'Shift pagi');

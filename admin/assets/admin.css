@@ -176,3 +176,14 @@ a[data-foto] { cursor: zoom-in; display: inline-block; }
 .lb-nav.next { right: 10px; }
 .lb-hint { text-align: center; padding: 10px; font-size: 12.5px; color: #9aa4b2; }
 @media (max-width: 820px) { .lb-stage { padding: 0 8px; } .lb-nav { width: 40px; height: 52px; font-size: 28px; } .lb-hint { display: none; } }
+
+/* Panel "Perlu perhatian" di dashboard */
+.perhatian-daftar { list-style: none; margin: 0; padding: 0; }
+.perhatian-daftar li { display: flex; gap: 12px; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--border); }
+.perhatian-daftar li:last-child { border-bottom: 0; }
+.perhatian-daftar li > div { flex: 1; min-width: 0; }
+.perhatian-daftar b { display: block; }
+.perhatian-daftar small { color: var(--muted); }
+.perhatian-daftar .titik { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.perhatian-daftar .merah .titik { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+.perhatian-daftar .kuning .titik { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }

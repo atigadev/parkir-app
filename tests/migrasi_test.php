@@ -54,12 +54,13 @@ function siapkan_db_lama(PDO $root): void
     $pdo->exec('ALTER TABLE kendaraan_masuk DROP COLUMN catatan_sistem');
     $pdo->exec('ALTER TABLE log_aktivitas DROP INDEX idx_aksi_ref_waktu');
     $pdo->exec('DROP TABLE petugas_token');
+    $pdo->exec('ALTER TABLE petugas DROP COLUMN antrean_offline, DROP COLUMN antrean_sejak, DROP COLUMN jam_selisih_detik');
     $pdo->exec("DELETE FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi','skema_versi')");
 }
 function struktur_lengkap(): bool
 {
     return kolom_ada('shift', 'pos_nama') && kolom_ada('petugas', 'app_versi') && kolom_ada('petugas', 'app_versi_at')
-        && kolom_ada('transaksi_keluar', 'total_offline') && kolom_ada('kendaraan_masuk', 'catatan_sistem') && indeks_ada('log_aktivitas', 'idx_aksi_ref_waktu') && tabel_ada('petugas_token')
+        && kolom_ada('transaksi_keluar', 'total_offline') && kolom_ada('kendaraan_masuk', 'catatan_sistem') && indeks_ada('log_aktivitas', 'idx_aksi_ref_waktu') && tabel_ada('petugas_token') && kolom_ada('petugas', 'jam_selisih_detik') && kolom_ada('petugas', 'antrean_sejak')
         && q_val("SELECT COUNT(*) FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi')") == 3;
 }
 

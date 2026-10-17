@@ -7,7 +7,8 @@
   var S = {
     token: null, petugas: null, shift: null, config: null,
     online: navigator.onLine, tab: 'kerja', jenis: 'motor',
-    stream: null, scanner: null, scanSibuk: false
+    stream: null, scanner: null, scanSibuk: false,
+    antrean: { n: 0, umur: 0 }, jamSelisih: 0
   };
 
   // ================================================================ utilitas
@@ -63,8 +64,13 @@
     var timer = setTimeout(function () { ctrl && ctrl.abort(); }, opts.timeout || 15000);
     var headers = {};
     var body = opts.body;
+    var t0 = Date.now();
     if (S.token) headers.Authorization = 'Bearer ' + S.token;
+    // Kondisi HP untuk admin: versi, antrean transaksi offline, dan jam HP (deteksi jam tidak sinkron)
     headers['X-App-Versi'] = VERSI_APP;
+    headers['X-Antrean'] = String(S.antrean.n);
+    headers['X-Antrean-Umur'] = String(S.antrean.umur);
+    headers['X-Jam-HP'] = String(t0);
     if (body && !(body instanceof FormData)) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(body); }
     return fetch(API + rute + (opts.query || ''), {
       method: opts.method || (body ? 'POST' : 'GET'), headers: headers, body: body, signal: ctrl ? ctrl.signal : undefined, cache: 'no-store'
@@ -76,6 +82,7 @@
           if (res.status === 401) sesiHabis();
           throw new ApiError(j.error || 'Gagal', j.kode, res.status, j.data);
         }
+        if (j.data && j.data.config && j.data.config.waktu_server) ukurJam(t0, Date.now(), j.data.config.waktu_server);
         return j.data;
       });
     }, function (err) {
@@ -204,16 +211,14 @@
     if (tab === 'kerja' && !masuk) startScanner(); else stopScanner();
     if (tab === 'riwayat') renderRiwayat();
     if (tab === 'shift') renderShift();
+    perbaruiAntrean();
   }
 
   function renderChips() {
     var net = $('#chip-net');
     net.textContent = S.online ? '● Online' : '● Offline';
     net.className = 'chip ' + (S.online ? 'ok' : 'warn');
-    Outbox.jumlah().then(function (n) {
-      var c = $('#chip-sync');
-      c.hidden = !n; c.textContent = '⇅ ' + n + ' antre';
-    }).catch(function () {});
+    perbaruiAntrean();
     var ps = Printer.status(), pc = $('#chip-print');
     if (ps.mode === 'bluetooth') {
       pc.textContent = ps.connected ? '🖨 Siap' : ps.connecting ? '🖨 Menyambung…' : '🖨 Putus';
@@ -224,6 +229,48 @@
     var bc = $('#badge-cetak'); bc.hidden = !belum; bc.textContent = belum;
   }
   Printer.onChange(renderChips);
+
+  // ---------------------------------------------------------------- jam HP & antrean offline
+  /**
+   * Bandingkan jam HP dengan jam server (dikoreksi separuh waktu tempuh jaringan). Jam/zona waktu HP yang
+   * salah membuat tiket & tarif offline salah, jadi petugas diminta memperbaikinya.
+   */
+  function ukurJam(t0, t1, waktuServer) {
+    var server = Tarif.parse(waktuServer).getTime();
+    if (isNaN(server)) return;
+    S.jamSelisih = Math.round(((t0 + t1) / 2 - server) / 1000);
+    renderBannerJam();
+  }
+  function renderBannerJam() {
+    var b = $('#banner-jam'), d = S.jamSelisih, abs = Math.abs(d);
+    b.hidden = abs <= 120 || !S.token;
+    if (b.hidden) return;
+    var teks = abs >= 3600 ? Math.round(abs / 3600) + ' jam' : Math.round(abs / 60) + ' menit';
+    $('#bj-teks').textContent = 'Jam HP ' + (d > 0 ? 'lebih cepat ' : 'lebih lambat ') + teks + ' dari server. Tiket & tarif offline bisa salah — buka Setelan › Tanggal & waktu, aktifkan "Otomatis" dan zona waktu WIB.';
+  }
+  $('#bj-aksi').addEventListener('click', function () { api('me').then(function () { if ($('#banner-jam').hidden) toast('Jam HP sudah sesuai', 'ok'); }).catch(function (e) { toast(e.message, 'bad'); }); });
+
+  /** Ringkasan antrean offline: jumlah & umur item tertua (menit). Dipakai chip, banner, dan dilaporkan ke server. */
+  function perbaruiAntrean() {
+    return Outbox.semua().then(function (items) {
+      var tertua = items.reduce(function (m, x) { return Math.min(m, x.dibuat || Date.now()); }, Date.now());
+      S.antrean = { n: items.length, umur: items.length ? Math.max(0, Math.floor((Date.now() - tertua) / 60000)) : 0 };
+      var c = $('#chip-sync');
+      c.hidden = !items.length; c.textContent = '⇅ ' + items.length + ' antre';
+      var b = $('#banner-antre');
+      b.hidden = !(items.length && S.antrean.umur >= 15);
+      if (!b.hidden) {
+        var jamTertua = new Date(tertua);
+        $('#ba-teks').textContent = items.length + ' transaksi offline belum terkirim sejak ' + ('0' + jamTertua.getHours()).slice(-2) + ':' + ('0' + jamTertua.getMinutes()).slice(-2) +
+          '. Data ini hanya ada di HP ini — jangan hapus data Chrome atau uninstall aplikasi sebelum terkirim.';
+      }
+    }).catch(function () {});
+  }
+  $('#ba-aksi').addEventListener('click', function () {
+    api('me').then(sinkron).then(function () { return perbaruiAntrean(); }).then(function () {
+      toast(S.antrean.n ? S.antrean.n + ' transaksi masih tertahan' : 'Semua transaksi terkirim', S.antrean.n ? 'bad' : 'ok');
+    }).catch(function (e) { toast(e.message, 'bad'); });
+  });
 
   // ---------------------------------------------------------------- jaga koneksi printer
   /** Jaga koneksi printer Bluetooth selama shift berjalan (sambung ulang otomatis + keep-alive). */
@@ -1004,7 +1051,18 @@
       }, function () { sedangSinkron = false; });
     }).catch(function () { sedangSinkron = false; });
   }
-  setInterval(function () { if (S.token) { if (S.online) sinkron(); else api('me').catch(function () {}); } }, 20000);
+  var meTerakhir = Date.now();
+  setInterval(function () {
+    if (!S.token) return;
+    if (!S.online) return api('me').catch(function () {});
+    sinkron();
+    perbaruiAntrean();
+    // Tiap 10 menit: perbarui tarif/pengaturan, ukur ulang jam HP, laporkan kondisi HP ke admin.
+    if (Date.now() - meTerakhir > 10 * 60 * 1000) {
+      meTerakhir = Date.now();
+      api('me').then(function (d) { S.config = d.config; simpanSesi(); }).catch(function () {});
+    }
+  }, 20000);
 
   function renderSync() {
     Outbox.jumlah().then(function (n) {

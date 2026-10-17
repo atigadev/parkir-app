@@ -91,7 +91,9 @@ layout_atas('Petugas', 'petugas.php');
             <td class="mono"><?= e($r['username']) ?></td>
             <td><?= badge($r['role'], $r['role'] === 'admin' ? 'info' : '') ?></td>
             <td><?= tgl($r['last_login']) ?><?php if ($nPerangkat = jumlah_perangkat_aktif((int)$r['id'])): ?><br><small class="muted"><?= $nPerangkat ?> perangkat aktif</small><?php endif; ?></td>
-            <td><?= badge_versi($r['app_versi'] ?? null, $r['app_versi_at'] ?? null) ?></td>
+            <td><?= badge_versi($r['app_versi'] ?? null, $r['app_versi_at'] ?? null) ?>
+              <?php if (!empty($r['antrean_offline'])): ?><br><?= badge($r['antrean_offline'] . ' antrean offline', strtotime((string)$r['antrean_sejak']) < time() - 900 ? 'danger' : 'warn') ?><?php endif; ?>
+              <?php if (isset($r['jam_selisih_detik']) && abs((int)$r['jam_selisih_detik']) > 120): ?><br><?= badge('jam HP selisih ' . round(abs((int)$r['jam_selisih_detik']) / 60) . ' mnt', 'danger') ?><?php endif; ?></td>
             <td><?= $r['aktif'] ? badge('aktif', 'ok') : badge('nonaktif', 'danger') ?></td>
             <td class="actions"><a class="btn sm ghost" href="?edit=<?= (int)$r['id'] ?>">Ubah</a>
               <?php if ((int)$r['id'] !== admin_id()): ?><form method="post" data-confirm="<?= $r['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?> akun <?= e($r['username']) ?>?"><?= csrf_field() ?><input type="hidden" name="aksi" value="toggle"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="btn sm ghost"><?= $r['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button></form><?php endif; ?></td>

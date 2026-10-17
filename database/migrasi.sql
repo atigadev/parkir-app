@@ -57,9 +57,14 @@ CREATE TABLE IF NOT EXISTS petugas_token (
   CONSTRAINT fk_token_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- v5: kondisi HP petugas (antrean offline & selisih jam) ---------------------------------------
+CALL parkit_tambah_kolom('petugas', 'antrean_offline',   'INT NULL AFTER app_versi_at');
+CALL parkit_tambah_kolom('petugas', 'antrean_sejak',     'DATETIME NULL AFTER antrean_offline');
+CALL parkit_tambah_kolom('petugas', 'jam_selisih_detik', 'INT NULL AFTER antrean_sejak');
+
 -- Catat versi skema (tidak pernah menurunkan versi yang lebih tinggi) --------------------------
-INSERT INTO pengaturan (kunci, nilai) VALUES ('skema_versi', '4')
-  ON DUPLICATE KEY UPDATE nilai = GREATEST(CAST(nilai AS UNSIGNED), 4);
+INSERT INTO pengaturan (kunci, nilai) VALUES ('skema_versi', '5')
+  ON DUPLICATE KEY UPDATE nilai = GREATEST(CAST(nilai AS UNSIGNED), 5);
 
 DROP PROCEDURE IF EXISTS parkit_tambah_kolom;
 

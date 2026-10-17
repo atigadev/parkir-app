@@ -62,15 +62,33 @@ function petugas_dari_token(): array
     return $p;
 }
 
-/** Catat versi aplikasi petugas (header X-App-Versi) — diperbarui bila berubah atau tiap 10 menit. */
+/**
+ * Catat kondisi HP petugas dari header aplikasi: versi (X-App-Versi), antrean transaksi offline
+ * (X-Antrean, X-Antrean-Umur menit), dan jam HP (X-Jam-HP, epoch ms) untuk menghitung selisih jam.
+ * Diperbarui bila berubah atau tiap 10 menit, agar tidak menulis ke database di setiap permintaan.
+ */
 function catat_versi_app(int $petugasId): void
 {
     $v = (string)($_SERVER['HTTP_X_APP_VERSI'] ?? '');
     if (!preg_match('/^v\d{1,4}$/', $v)) return;
+    $antrean = isset($_SERVER['HTTP_X_ANTREAN']) && ctype_digit((string)$_SERVER['HTTP_X_ANTREAN']) ? min(99999, (int)$_SERVER['HTTP_X_ANTREAN']) : null;
+    $umur = isset($_SERVER['HTTP_X_ANTREAN_UMUR']) && ctype_digit((string)$_SERVER['HTTP_X_ANTREAN_UMUR']) ? min(525600, (int)$_SERVER['HTTP_X_ANTREAN_UMUR']) : null;
+    $sejak = $antrean ? date('Y-m-d H:i:s', time() - 60 * (int)$umur) : null;
+    $jam = isset($_SERVER['HTTP_X_JAM_HP']) && preg_match('/^\d{12,14}$/', (string)$_SERVER['HTTP_X_JAM_HP'])
+        ? (int)round((int)$_SERVER['HTTP_X_JAM_HP'] / 1000 - microtime(true)) : null;
+    if ($jam !== null && abs($jam) > 10 * 365 * 86400) $jam = null;
     try {
-        q('UPDATE petugas SET app_versi = ?, app_versi_at = ? WHERE id = ? AND (app_versi IS NULL OR app_versi <> ? OR app_versi_at < ?)', [
-            $v, now(), $petugasId, $v, date('Y-m-d H:i:s', time() - 600),
-        ]);
+        if (kolom_tersedia('petugas', 'jam_selisih_detik')) {
+            q('UPDATE petugas SET app_versi = ?, app_versi_at = ?, antrean_offline = ?, antrean_sejak = ?, jam_selisih_detik = ?
+               WHERE id = ? AND (app_versi IS NULL OR app_versi <> ? OR app_versi_at < ? OR NOT (antrean_offline <=> ?)
+                 OR (? IS NOT NULL AND (jam_selisih_detik IS NULL OR ABS(jam_selisih_detik - ?) > 30)))', [
+                $v, now(), $antrean, $sejak, $jam, $petugasId, $v, date('Y-m-d H:i:s', time() - 600), $antrean, $jam, (int)$jam,
+            ]);
+        } else {
+            q('UPDATE petugas SET app_versi = ?, app_versi_at = ? WHERE id = ? AND (app_versi IS NULL OR app_versi <> ? OR app_versi_at < ?)', [
+                $v, now(), $petugasId, $v, date('Y-m-d H:i:s', time() - 600),
+            ]);
+        }
     } catch (Throwable $e) {
         // kolom belum ada (migrasi gagal): abaikan
     }
@@ -164,6 +182,16 @@ $r = (string)($_GET['r'] ?? '');
 
 try {
     switch ($r) {
+
+    // ---------------- Pemantauan (uptime monitor, tanpa login) -------------
+    case 'ping':
+        try {
+            q_val('SELECT 1');
+            ok(['status' => 'sehat', 'waktu' => now(), 'skema' => skema_versi_db(), 'versi_pwa' => versi_pwa_terbaru()]);
+        } catch (Throwable $e) {
+            error_log('[parkit] ping: database tidak terjangkau: ' . $e->getMessage());
+            gagal('Database tidak terjangkau.', 'db', 503);
+        }
 
     // ---------------- Otentikasi -------------------------------------------
     case 'auth.login':

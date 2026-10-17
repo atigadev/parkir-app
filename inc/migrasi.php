@@ -13,7 +13,7 @@
  */
 declare(strict_types=1);
 
-const SKEMA_VERSI = 4;
+const SKEMA_VERSI = 5;
 
 function kolom_ada(string $tabel, string $kolom): bool
 {
@@ -122,6 +122,14 @@ function langkah_migrasi(): array
             if (tabel_ada('petugas_token')) return [];
             db()->exec(SQL_PETUGAS_TOKEN);
             return ['tabel petugas_token'];
+        },
+        // v5: kondisi HP petugas yang dilaporkan aplikasi (antrean offline & selisih jam)
+        5 => function (): array {
+            $ubah = [];
+            if (tambah_kolom('petugas', 'antrean_offline', 'INT NULL AFTER app_versi_at')) $ubah[] = 'petugas.antrean_offline';
+            if (tambah_kolom('petugas', 'antrean_sejak', 'DATETIME NULL AFTER antrean_offline')) $ubah[] = 'petugas.antrean_sejak';
+            if (tambah_kolom('petugas', 'jam_selisih_detik', 'INT NULL AFTER antrean_sejak')) $ubah[] = 'petugas.jam_selisih_detik';
+            return $ubah;
         },
     ];
 }

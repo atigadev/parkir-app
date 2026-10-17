@@ -27,6 +27,7 @@ require_once __DIR__ . '/parkir.php';
 require_once __DIR__ . '/ocr.php';
 require_once __DIR__ . '/migrasi.php';
 require_once __DIR__ . '/keamanan.php';
+require_once __DIR__ . '/perhatian.php';
 
 function config(string $key, $default = null)
 {

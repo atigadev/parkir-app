@@ -3,7 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/../inc/admin.php';
 wajib_admin();
 
-$kunci = ['denda_tanpa_tiket_motor', 'denda_tanpa_tiket_mobil', 'qris_nama_merchant', 'ocr_url', 'ocr_timeout', 'ocr_ambang', 'retensi_foto_hari'];
+$kunci = ['email_laporan', 'denda_tanpa_tiket_motor', 'denda_tanpa_tiket_mobil', 'qris_nama_merchant', 'ocr_url', 'ocr_timeout', 'ocr_ambang', 'retensi_foto_hari'];
 
 if (is_post()) {
     cek_csrf();
@@ -58,6 +58,7 @@ layout_atas('Pengaturan', 'pengaturan.php');
       <div class="card-h"><h2>Denda & tampilan resi</h2><a class="btn sm ghost" href="resi.php">Atur tampilan resi →</a></div>
       <div class="card-b" style="display:grid;gap:12px">
         <p class="muted" style="margin:0">Nama lokasi, alamat, telepon, ketentuan tiket, penutup struk, dan lebar kertas (56/58 mm atau 80 mm) diatur di menu <a href="resi.php">Tampilan Resi</a>, lengkap dengan pratinjau.</p>
+        <label class="f">Email ringkasan harian<small>Dikirim oleh tugas terjadwal cli/ringkasan_harian.php: pendapatan kemarin + daftar "Perlu perhatian". Pisahkan beberapa alamat dengan koma.</small><input name="email_laporan" value="<?= e(setting('email_laporan')) ?>" placeholder="pemilik@contoh.com, manajer@contoh.com"></label>
         <div class="form-grid">
           <label class="f">Denda tanpa tiket — motor<input type="number" min="0" step="500" name="denda_tanpa_tiket_motor" value="<?= e(setting('denda_tanpa_tiket_motor')) ?>"></label>
           <label class="f">Denda tanpa tiket — mobil<input type="number" min="0" step="500" name="denda_tanpa_tiket_mobil" value="<?= e(setting('denda_tanpa_tiket_mobil')) ?>"></label>

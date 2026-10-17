@@ -47,7 +47,7 @@ Pilih salah satu:
 4. **Riwayat**: 20 transaksi terakhir di perangkat, cetak ulang, minta void ke admin.
 5. **Shift** → isi uang setoran → **Tutup Shift** → selisih tercatat dan tampil di dashboard admin.
 
-## Printer thermal 58 mm
+## Printer thermal (56/58 mm & 80 mm)
 
 Atur di tab **Shift → Printer**:
 
@@ -85,23 +85,68 @@ Rincian lengkap beserta salinan tarif disimpan di `transaksi_keluar.rincian_biay
 
 ## Keamanan & anti-kecurangan
 
-- QR berisi token HMAC (`PK1.<uuid>.<jenis>.<waktu>.<tanda>`), bukan plat; server mencocokkan persis dengan database. Tiket hanya bisa dipakai keluar sekali.
-- Tidak ada penghapusan transaksi. Petugas hanya bisa *meminta* void; admin menyetujui dengan alasan wajib. Semua koreksi plat, void, perubahan tarif/pengaturan/petugas, login, dan keluar tanpa tiket tercatat di **Log Aktivitas**.
-- Rekap cash per shift dihitung sistem; selisih setoran tampil di dashboard dan laporan.
-- `inc/`, `database/`, `cli/`, `tests/`, `backup/`, `config.php`, folder tersembunyi (`.git`, `.env`), serta arsip/dump/log (`*.zip`, `*.sql`, `*.bak`, `*.log`, …) diblokir dari web lewat `.htaccess`; folder `uploads/` tidak bisa mengeksekusi skrip.
-- Jangan menaruh arsip deploy (mis. `.zip` berisi `config.php`) di folder situs. Arsip dan `config.php` juga diabaikan Git (`.gitignore`).
-- Batasi API ke LAN: di `config.php` isi `'api_allow_prefix' => ['127.0.0.1', '::1', '192.168.']`.
-- XAMPP: beri password root MySQL (lalu sesuaikan `config.php` dan `cli/backup.bat`), batasi phpMyAdmin ke localhost.
+**Pendapatan**
+- QR berisi token HMAC (`PK1.<uuid>.<jenis>.<waktu>.<tanda>`), bukan plat. Server mencocokkan dengan database, dan satu tiket hanya bisa dipakai keluar sekali.
+- **Waktu keluar ditentukan server.** Saat scan, server memberi *token hitung* bertanda tangan yang berlaku 5 menit. Waktu keluar dari HP tanpa token sah diabaikan, sehingga tidak bisa dimundurkan untuk memperkecil tarif.
+- **Transaksi offline selalu dihitung ulang server.** Nominal yang dicatat HP disimpan terpisah (`total_offline`), sedangkan setoran shift yang diharapkan mengikuti hitungan server. Manipulasi nominal di HP terlihat sebagai kekurangan setoran dan muncul di **Perlu perhatian** serta filter **Offline berselisih**.
+- **Waktu masuk offline yang janggal** (di masa depan atau sebelum shift dibuka) dikoreksi otomatis dan ditandai.
+- Tidak ada penghapusan transaksi. Petugas hanya bisa *meminta* void, lalu admin menyetujui dengan alasan wajib. Semuanya tercatat di **Log Aktivitas**.
 
-## Tugas terjadwal (Windows Task Scheduler)
+**Akun & sesi**
+- Login dikunci 15 menit setelah 5 kali gagal per akun, atau 20 kali per alamat IP.
+- Password minimal 8 karakter dan bukan password umum. Akun dengan password bawaan `admin123` **wajib mengganti password** sebelum bisa memakai panel admin (menu *Akun saya*).
+- Sesi aplikasi petugas berlaku per perangkat (maks 5). Logout hanya memutus perangkat itu, sedangkan ganti/reset password dan nonaktifkan akun memutus semua perangkat. Sesi admin berakhir setelah 4 jam tidak ada aktivitas.
 
-| Tugas | Perintah | Jadwal |
-|---|---|---|
-| Backup database | `C:\xampp\htdocs\parkit-app\cli\backup.bat` | Harian, di luar jam ramai |
-| Retensi foto | `C:\xampp\php\php.exe C:\xampp\htdocs\parkit-app\cli\maintenance.php` | Harian |
+**Server & data**
+- Header keamanan: CSP (admin memakai *nonce*, PWA hanya skrip dari server sendiri), HSTS di HTTPS, `X-Frame-Options`, dan `Referrer-Policy`. Cookie sesi memakai `Secure` di HTTPS, dan `X-Powered-By` dihapus.
+- `display_errors` mati kecuali `'debug' => true` di `config.php`. Jangan aktifkan `debug` di produksi.
+- **Foto kendaraan** (data pribadi) hanya bisa dibuka lewat `foto.php` dengan URL bertanda tangan yang kedaluwarsa dalam 2 jam. Folder `uploads/foto` tertutup dari akses langsung.
+- `inc/`, `database/`, `cli/`, `tests/`, `backup/`, `config.php`, folder tersembunyi (`.git`, `.env`), serta arsip/dump/log (`*.zip`, `*.sql`, `*.bak`, `*.log`, …) diblokir lewat `.htaccess`. Folder `uploads/` tidak bisa mengeksekusi skrip.
+- Ekspor CSV menetralkan teks yang diawali `= + - @` (mencegah *formula injection* di Excel).
+- **Hosting Nginx** tidak membaca `.htaccess`. Terapkan aturan blokir yang sama (terutama `uploads/foto`, `inc/`, `config.php`, `*.sql`) di konfigurasi Nginx.
+- Untuk menyembunyikan versi Apache, set `ServerTokens Prod` dan `ServerSignature Off` di konfigurasi Apache. Ini tidak bisa diatur lewat `.htaccess`.
+- Jangan menaruh arsip deploy (misalnya `.zip` berisi `config.php`) di folder situs.
+- Batasi API ke LAN bila server lokal: `'api_allow_prefix' => ['127.0.0.1', '::1', '192.168.']`. Di hosting biarkan `[]`.
+- XAMPP: beri password root MySQL (lalu sesuaikan `config.php`), dan batasi phpMyAdmin ke localhost.
 
-Ubah `TUJUAN` di `backup.bat` ke disk lain atau NAS. Saran operasional lain (sesuai spesifikasi): UPS untuk server dan access point, matikan update otomatis Windows di jam operasional, `innodb_buffer_pool_size` 1–2 GB.
+## Pemantauan
 
+- **Admin → Dashboard → Perlu perhatian** mengumpulkan semua hal yang perlu ditindaklanjuti:
+  - transaksi offline berselisih, shift kurang setor, tiket offline berjam janggal
+  - permintaan void, QRIS hari sebelumnya yang belum direkonsiliasi
+  - transaksi offline yang ditolak server, antrean offline yang tertahan di HP, jam HP yang tidak sinkron, HP dengan aplikasi versi lama
+  - login gagal berulang, shift lupa ditutup
+  - password admin bawaan, backup yang terlambat, migrasi yang belum lengkap
+- **Uptime monitor:** arahkan layanan seperti UptimeRobot ke `https://DOMAIN/api/index.php?r=ping`. Respons HTTP 200 berarti aplikasi dan database sehat, sedangkan 503 berarti database tidak terjangkau.
+- **Ringkasan harian lewat email:** isi *Pengaturan → Email ringkasan harian*, lalu jadwalkan `cli/ringkasan_harian.php` setiap pagi. Isinya pendapatan kemarin ditambah daftar Perlu perhatian. Uji tampilannya dengan `php cli/ringkasan_harian.php --cetak`.
+- **Aplikasi petugas** memperingatkan petugas bila jam HP selisih lebih dari 2 menit dengan server, atau bila ada transaksi offline yang belum terkirim lebih dari 15 menit.
+
+## SOP rekonsiliasi QRIS (harian)
+
+QRIS statis tidak memberi konfirmasi otomatis, sehingga kebenaran "Sudah Bayar" dari petugas dipastikan lewat rekonsiliasi:
+
+1. Setiap pagi buka **Admin → Rekonsiliasi QRIS**, lalu pilih tanggal kemarin.
+2. Cocokkan setiap transaksi dengan mutasi rekening atau aplikasi merchant (nominal dan jam).
+3. Centang yang cocok, lalu klik **Tandai cocok**.
+4. Transaksi yang **tidak ada di mutasi**: buka detail transaksinya, cek foto dan petugasnya, lalu tindak lanjuti dengan petugas tersebut.
+5. Tanggal yang belum selesai direkonsiliasi akan terus muncul di **Perlu perhatian**.
+
+Bila volume QRIS besar, pertimbangkan QRIS dinamis lewat payment gateway (roadmap tahap 5).
+
+## Tugas terjadwal
+
+| Tugas | cPanel (Cron Jobs) | Windows (Task Scheduler) | Jadwal |
+|---|---|---|---|
+| Backup database | `php /home/USER/parkit/cli/backup.php` | `C:\xampp\htdocs\parkit-app\cli\backup.bat` | Harian, di luar jam ramai |
+| Retensi foto | `php /home/USER/parkit/cli/maintenance.php` | `C:\xampp\php\php.exe ...\cli\maintenance.php` | Harian |
+| Ringkasan email | `php /home/USER/parkit/cli/ringkasan_harian.php` | `C:\xampp\php\php.exe ...\cli\ringkasan_harian.php` | Harian 06:00 |
+
+**Backup** (`cli/backup.php`) memakai PHP murni (tanpa `mysqldump`), menghasilkan file `.sql.gz`, dan menyimpan 14 backup terakhir.
+- Atur folder lewat `'backup_dir'` dan jumlah simpanan lewat `'backup_simpan'` di `config.php`, atau beri argumen `--ke=/path`. **Simpan backup di luar folder situs**, dan salin berkala ke tempat lain (Google Drive, komputer kantor).
+- **Pulihkan:** `gunzip -c parkit-XXXX.sql.gz | mysql -u USER -p NAMA_DB`, atau phpMyAdmin → Import file `.sql.gz`. Setelah itu jalankan `php cli/migrasi.php --periksa`.
+- `tests/backup_test.php` membuktikan backup bisa dipulihkan: backup dibuat, dipulihkan ke database uji, lalu isi setiap tabel dibandingkan.
+
+Saran operasional lain (sesuai spesifikasi): UPS untuk server dan access point, matikan update otomatis Windows di jam operasional, `innodb_buffer_pool_size` 1–2 GB.
 ## Update & migrasi database
 
 Migrasi skema bersifat **idempoten**, artinya aman dijalankan berulang kali. Kolom dan pengaturan hanya ditambahkan bila belum ada, dan nilai yang sudah diatur admin tidak pernah ditimpa.
@@ -124,20 +169,35 @@ Versi skema tersimpan di `pengaturan.skema_versi`. Untuk migrasi baru, tambahkan
 
 ## Pengujian
 
+Jalankan **sebelum setiap deploy**, sebaiknya di server *staging* atau komputer lokal (bukan produksi, karena uji API membuat dan menghapus data sementara):
+
 ```
-php tests/tarif_test.php
-php tests/ocr_test.php
-php tests/migrasi_test.php
+php tests/jalankan_semua.php                      # memakai http://localhost/parkit-app
+php tests/jalankan_semua.php http://staging.contoh.com --yakin
 ```
 
-`migrasi_test.php` memakai database uji sementara (`parkit_ujimigrasi`) yang dibuat lalu dihapus otomatis, jadi database aplikasi tidak tersentuh.
+| Uji | Isi |
+|---|---|
+| `tarif_test.php` | Mesin tarif PHP (13 kasus). Juga membuat `tests/tarif_cases.js` untuk uji versi JS. |
+| `ocr_test.php` | Pemilihan hasil OCR dan peringatan "OCR ragu". |
+| `migrasi_test.php` | Idempotensi migrasi skema di database uji sementara. |
+| `backup_test.php` | Backup lalu **pemulihan** ke database uji, dengan isi tabel dibandingkan. |
+| `api_test.php` | Alur API ujung-ke-ujung dan skenario kecurangan/serangan dari laporan QA (35+ kasus). |
 
-Perintah di atas menguji mesin tarif PHP dan membuat `tests/tarif_cases.js`. Versi JS diuji dengan membuka `tests/tarif_parity.html` langsung dari disk (`file:///…`), atau secara headless:
+Database uji sementara (`parkit_ujimigrasi`, `parkit_ujibackup`) dibuat lalu dihapus otomatis, dan akun uji (id 990–993) dibersihkan.
+
+**Kompatibilitas PHP:** semua uji lulus di **PHP 7.4 dan PHP 8.2**, tanpa warning maupun deprecation (`error_reporting=-1`). Untuk menguji dengan server bawaan PHP, yang tidak membaca `.htaccess`:
+
+```
+php -S 127.0.0.1:8098 -t C:/xampp/htdocs
+php tests/jalankan_semua.php http://127.0.0.1:8098/parkit-app --server-bawaan
+```
+
+Versi JS mesin tarif diuji dengan membuka `tests/tarif_parity.html` langsung dari disk (`file:///…`), atau secara headless:
 
 ```
 chrome --headless --allow-file-access-from-files --dump-dom file:///C:/xampp/htdocs/parkit-app/tests/tarif_parity.html
 ```
-
 ## Struktur
 
 ```
@@ -146,8 +206,9 @@ admin/               Panel admin (PHP + CSS)
 inc/                 bootstrap, helper, mesin tarif, token QR, OCR, operasi parkir
 pwa/                 Aplikasi petugas: index.html, app.css, js/, sw.js, manifest
 database/schema.sql  Skema + data awal
-cli/                 Backup & retensi foto
-tests/               Uji mesin tarif (PHP & JS)
+cli/                 Backup, retensi foto, migrasi, ringkasan harian
+tests/               Uji otomatis (jalankan_semua.php)
+foto.php             Penyaji foto kendaraan dengan URL bertanda tangan
 uploads/             Foto kendaraan & gambar QRIS
 ```
 

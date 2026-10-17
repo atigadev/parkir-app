@@ -23,4 +23,7 @@ return [
     'base_path' => null,
     // true hanya saat pengembangan: menampilkan detail error PHP di layar. JANGAN aktifkan di server produksi.
     'debug' => false,
+    // Backup (cli/backup.php): folder tujuan — sebaiknya DI LUAR folder situs — dan jumlah backup yang disimpan.
+    // 'backup_dir' => '/home/USER/backup-parkit',
+    'backup_simpan' => 14,
 ];
