@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/inc/bootstrap.php';
+header_keamanan('admin');
 ?><!doctype html>
 <html lang="id">
 <head>

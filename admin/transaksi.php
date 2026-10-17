@@ -77,8 +77,8 @@ if (!empty($_GET['id'])) {
       <div>
         <div class="card"><div class="card-h"><h2>Foto masuk & keluar</h2></div>
           <div class="card-b photo-pair">
-            <figure style="margin:0"><?php if ($km['foto_masuk_url']): ?><a href="<?= e(base_url($km['foto_masuk_url'])) ?>" data-foto="<?= e($km['plat_nomor'] . ' · masuk ' . tgl($km['waktu_masuk'])) ?>" data-grup="tx"><img src="<?= e(base_url($km['foto_masuk_url'])) ?>" alt="Foto masuk"></a><?php else: ?><div class="empty">Tidak ada foto</div><?php endif; ?><figcaption class="muted">Masuk</figcaption></figure>
-            <figure style="margin:0"><?php if ($tk && $tk['foto_keluar_url']): ?><a href="<?= e(base_url($tk['foto_keluar_url'])) ?>" data-foto="<?= e($km['plat_nomor'] . ' · keluar ' . tgl($tk['waktu_keluar'])) ?>" data-grup="tx"><img src="<?= e(base_url($tk['foto_keluar_url'])) ?>" alt="Foto keluar"></a><?php else: ?><div class="empty">Tidak ada foto</div><?php endif; ?><figcaption class="muted">Keluar</figcaption></figure>
+            <figure style="margin:0"><?php if ($km['foto_masuk_url']): ?><a href="<?= e(url_foto_aman($km['foto_masuk_url'])) ?>" data-foto="<?= e($km['plat_nomor'] . ' · masuk ' . tgl($km['waktu_masuk'])) ?>" data-grup="tx"><img src="<?= e(url_foto_aman($km['foto_masuk_url'])) ?>" alt="Foto masuk"></a><?php else: ?><div class="empty">Tidak ada foto</div><?php endif; ?><figcaption class="muted">Masuk</figcaption></figure>
+            <figure style="margin:0"><?php if ($tk && $tk['foto_keluar_url']): ?><a href="<?= e(url_foto_aman($tk['foto_keluar_url'])) ?>" data-foto="<?= e($km['plat_nomor'] . ' · keluar ' . tgl($tk['waktu_keluar'])) ?>" data-grup="tx"><img src="<?= e(url_foto_aman($tk['foto_keluar_url'])) ?>" alt="Foto keluar"></a><?php else: ?><div class="empty">Tidak ada foto</div><?php endif; ?><figcaption class="muted">Keluar</figcaption></figure>
           </div>
         </div>
 

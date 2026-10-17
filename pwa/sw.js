@@ -1,9 +1,9 @@
 /* Service worker: app shell bisa dibuka tanpa koneksi. API tidak pernah di-cache. */
-importScripts('versi.js?v=11');
+importScripts('versi.js?v=12');
 var VERSI = 'parkit-' + self.PARKIT_VERSI;
 var SHELL = [
-  './', 'index.html', 'versi.js?v=11', 'struk.css?v=11', 'app.css?v=11', 'manifest.webmanifest',
-  'js/app.js?v=11', 'js/tarif.js', 'js/resi.js?v=11', 'js/printer.js?v=11', 'js/outbox.js',
+  './', 'index.html', 'versi.js?v=12', 'struk.css?v=12', 'app.css?v=12', 'manifest.webmanifest',
+  'js/app.js?v=12', 'js/tarif.js', 'js/resi.js?v=12', 'js/printer.js?v=12', 'js/outbox.js',
   'vendor/qrcode.js', 'vendor/html5-qrcode.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
@@ -29,7 +29,7 @@ self.addEventListener('message', function (e) {
 self.addEventListener('fetch', function (e) {
   var req = e.request, url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
-  if (url.pathname.indexOf('/api/') >= 0 || url.pathname.indexOf('/uploads/foto/') >= 0) return;
+  if (url.pathname.indexOf('/api/') >= 0 || url.pathname.indexOf('/uploads/foto/') >= 0 || /\/foto\.php$/.test(url.pathname)) return;
 
   // Halaman utama: ambil dari server dulu (agar versi baru langsung terpakai), cache hanya cadangan offline.
   if (req.mode === 'navigate') {

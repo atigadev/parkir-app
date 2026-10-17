@@ -12,6 +12,13 @@ if (!is_file(APP_ROOT . '/config.php')) {
 }
 $GLOBALS['CONFIG'] = require APP_ROOT . '/config.php';
 date_default_timezone_set(config('timezone', 'Asia/Jakarta'));
+// Produksi: jangan tampilkan detail error (path, query) ke pengguna; tetap dicatat di log server.
+if (!config('debug', false)) {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+}
+ini_set('log_errors', '1');
+if (PHP_SAPI !== 'cli') header_remove('X-Powered-By');
 
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/tarif.php';

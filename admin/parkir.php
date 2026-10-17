@@ -34,7 +34,7 @@ layout_atas('Sedang Parkir', 'parkir.php');
           $lama = intdiv(time() - strtotime($r['waktu_masuk']), 60);
           try { $biaya = hitung_untuk($r, now(), false)['total']; } catch (Throwable $ex) { $biaya = null; } ?>
         <tr>
-          <td><?php if ($r['foto_masuk_url']): ?><a href="<?= e(base_url($r['foto_masuk_url'])) ?>" data-foto="<?= e($r['plat_nomor'] . ' · masuk ' . tgl($r['waktu_masuk'])) ?>"><img class="thumb" src="<?= e(base_url($r['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
+          <td><?php if ($r['foto_masuk_url']): ?><a href="<?= e(url_foto_aman($r['foto_masuk_url'])) ?>" data-foto="<?= e($r['plat_nomor'] . ' · masuk ' . tgl($r['waktu_masuk'])) ?>"><img class="thumb" src="<?= e(url_foto_aman($r['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
           <td><span class="plat"><?= e($r['plat_nomor']) ?></span><?= $r['offline'] ? ' ' . badge('offline', 'warn') : '' ?><?= $r['void_diminta_at'] ? ' ' . badge('minta void', 'danger') : '' ?></td>
           <td><?= e($r['jenis_kendaraan']) ?></td>
           <td><?= tgl($r['waktu_masuk']) ?></td>

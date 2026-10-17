@@ -23,7 +23,7 @@ layout_atas('Kualitas OCR', 'ocr.php');
 <div class="grid g2">
   <div class="card">
     <div class="card-h"><h2>Per hari</h2>
-      <form method="get" class="filters"><select name="hari" onchange="this.form.submit()"><?php foreach ([7, 30, 90] as $h): ?><option value="<?= $h ?>" <?= $h === $hari ? 'selected' : '' ?>><?= $h ?> hari</option><?php endforeach; ?></select></form></div>
+      <form method="get" class="filters"><select name="hari" data-auto-submit><?php foreach ([7, 30, 90] as $h): ?><option value="<?= $h ?>" <?= $h === $hari ? 'selected' : '' ?>><?= $h ?> hari</option><?php endforeach; ?></select></form></div>
     <div class="card-b flush table-wrap">
       <table>
         <thead><tr><th>Tanggal</th><th class="num">Masuk</th><th class="num">Terbaca</th><th class="num">Dikoreksi</th><th style="width:30%">% dikoreksi</th></tr></thead>
@@ -43,7 +43,7 @@ layout_atas('Kualitas OCR', 'ocr.php');
         <thead><tr><th>Foto</th><th>OCR</th><th>Dikoreksi jadi</th><th>Waktu</th></tr></thead>
         <tbody>
         <?php foreach ($contoh as $c): ?>
-          <tr><td><?php if ($c['foto_masuk_url']): ?><a href="<?= e(base_url($c['foto_masuk_url'])) ?>" data-foto="<?= e('OCR: ' . $c['plat_hasil_ocr'] . ' → dikoreksi: ' . $c['plat_nomor']) ?>"><img class="thumb" src="<?= e(base_url($c['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
+          <tr><td><?php if ($c['foto_masuk_url']): ?><a href="<?= e(url_foto_aman($c['foto_masuk_url'])) ?>" data-foto="<?= e('OCR: ' . $c['plat_hasil_ocr'] . ' → dikoreksi: ' . $c['plat_nomor']) ?>"><img class="thumb" src="<?= e(url_foto_aman($c['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
             <td><span class="plat" style="text-decoration:line-through;opacity:.7"><?= e($c['plat_hasil_ocr']) ?></span></td><td><span class="plat"><?= e($c['plat_nomor']) ?></span></td><td><?= tgl($c['waktu_masuk']) ?></td></tr>
         <?php endforeach; if (!$contoh): ?><tr><td colspan="4" class="empty">Belum ada koreksi.</td></tr><?php endif; ?>
         </tbody>

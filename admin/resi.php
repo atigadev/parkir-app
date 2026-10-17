@@ -178,7 +178,7 @@ layout_atas('Tampilan Resi', 'resi.php');
 <script src="<?= e(base_url('pwa/vendor/qrcode.js')) ?>"></script>
 <script src="<?= e(base_url('pwa/js/tarif.js')) ?>"></script>
 <script src="<?= e(base_url('pwa/js/resi.js')) ?>?v=7"></script>
-<script>
+<script nonce="<?= e(csp_nonce()) ?>">
 (function () {
   var dasar = <?= json_encode($cfgDasar, JSON_UNESCAPED_UNICODE) ?>;
   var f = document.getElementById('f-resi'), box = document.getElementById('pratinjau');

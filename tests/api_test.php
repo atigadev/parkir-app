@@ -155,6 +155,35 @@ try {
     $r = api('keluar.scan', $tk, ['kode' => $palsu]);
     cek('N5. QR dengan tanda tangan palsu ditolak', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'qr_invalid');
 
+    // ---------------------------------------------------------------- #5 sesi per perangkat
+    $hp1 = $login('qa_dua_hp')['data']['token'] ?? '';
+    $hp2 = $login('qa_dua_hp')['data']['token'] ?? '';
+    cek('#5a. login di HP kedua tidak memutus HP pertama', (api('me', $hp1)['ok'] ?? false) && (api('me', $hp2)['ok'] ?? false));
+    api('auth.logout', $hp2, []);
+    cek('#5b. logout HP kedua hanya memutus HP itu', !(api('me', $hp2)['ok'] ?? true) && (api('me', $hp1)['ok'] ?? false));
+    token_cabut_semua(993);
+    cek('#5c. cabut semua sesi (reset password/nonaktif) memutus semua HP', !(api('me', $hp1)['ok'] ?? true));
+
+    // ---------------------------------------------------------------- #7 foto lewat URL bertanda tangan
+    $jpg = tempnam(sys_get_temp_dir(), 'qa') . '.jpg';
+    $im = imagecreatetruecolor(64, 48); imagejpeg($im, $jpg);
+    $tf = api('masuk', $tm, ['_form' => ['plat' => 'QA 7 AA', 'jenis' => 'motor', 'paksa' => '1', 'foto' => new CURLFile($jpg, 'image/jpeg', 'f.jpg')]])['data'] ?? [];
+    @unlink($jpg);
+    $get = function (string $url): int { $c = curl_init($url); curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]); curl_exec($c); $k = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); curl_close($c); return $k; };
+    $host = preg_replace('#^(https?://[^/]+).*$#', '$1', $BASE);
+    $path = (string)q_val('SELECT foto_masuk_url FROM kendaraan_masuk WHERE id = ?', [$tf['id'] ?? '']);
+    $url = (string)($tf['foto'] ?? '');
+    cek('#7a. API memberi URL foto bertanda tangan (foto.php)', strpos($url, 'foto.php?f=') !== false);
+    cek('#7b. URL bertanda tangan bisa dibuka', $url !== '' && $get($host . $url) === 200);
+    cek('#7c. akses langsung ke folder uploads/foto ditolak', $path !== '' && $get("$BASE/$path") === 403);
+    cek('#7d. tanda tangan diubah ditolak', $get($host . preg_replace('/s=[0-9a-f]{4}/', 's=0000', $url)) === 403);
+    $exp = time() - 60;
+    cek('#7e. tautan kedaluwarsa ditolak', $get("$BASE/foto.php?f=" . rawurlencode($path) . "&e=$exp&s=" . tanda_foto($path, $exp)) === 410);
+    if ($path) @unlink(APP_ROOT . '/' . $path);
+
+    // ---------------------------------------------------------------- #9 CSV
+    cek('#9. CSV: teks berawalan = + - @ dinetralkan, angka negatif tetap angka', csv_aman('=HYPERLINK("x")') === "'=HYPERLINK(\"x\")" && csv_aman('-1000') === '-1000' && csv_aman(-1000) === -1000 && csv_aman('Shift pagi') === 'Shift pagi');
+
     // ---------------------------------------------------------------- tutup shift
     $tutupM = api('shift.tutup', $tm, ['catatan' => 'uji']);
     cek('N6. tutup shift pos masuk tanpa setoran', ($tutupM['ok'] ?? false) && $tutupM['data']['shift']['total_cash_setor'] === null);

@@ -21,4 +21,6 @@ return [
     'api_allow_prefix' => [],   // contoh: ['127.0.0.1', '::1', '192.168.'] — biarkan [] di hosting/cPanel
     // Path URL aplikasi. null = deteksi otomatis. Isi '' bila di root (sub)domain, atau '/parkir' bila di subfolder.
     'base_path' => null,
+    // true hanya saat pengembangan: menampilkan detail error PHP di layar. JANGAN aktifkan di server produksi.
+    'debug' => false,
 ];

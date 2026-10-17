@@ -39,12 +39,14 @@ if (is_post()) {
         if ($galat = cek_password_baru($pass, $uname)) {
             flash($galat, 'err');
         } else {
-            q('UPDATE petugas SET password_hash = ?, api_token_hash = NULL, token_expires = NULL WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+            q('UPDATE petugas SET password_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+            token_cabut_semua($id);
             log_aktivitas(admin_id(), 'reset_password', $id);
             flash('Password direset. Petugas perlu login ulang di aplikasi.');
         }
     } elseif ($aksi === 'toggle' && $id && $id !== admin_id()) {
-        q('UPDATE petugas SET aktif = 1 - aktif, api_token_hash = NULL, token_expires = NULL WHERE id = ?', [$id]);
+        q('UPDATE petugas SET aktif = 1 - aktif WHERE id = ?', [$id]);
+        token_cabut_semua($id);
         log_aktivitas(admin_id(), 'ubah_status_petugas', $id);
         flash('Status akun diubah.');
     }
@@ -88,7 +90,7 @@ layout_atas('Petugas', 'petugas.php');
             <td><?= e($r['nama']) ?><?php if ($r['shift_buka']): [$pn] = explode('|', $r['shift_buka']); ?><br><small class="muted">Shift berjalan · <?= e($pn) ?></small><?php endif; ?></td>
             <td class="mono"><?= e($r['username']) ?></td>
             <td><?= badge($r['role'], $r['role'] === 'admin' ? 'info' : '') ?></td>
-            <td><?= tgl($r['last_login']) ?></td>
+            <td><?= tgl($r['last_login']) ?><?php if ($nPerangkat = jumlah_perangkat_aktif((int)$r['id'])): ?><br><small class="muted"><?= $nPerangkat ?> perangkat aktif</small><?php endif; ?></td>
             <td><?= badge_versi($r['app_versi'] ?? null, $r['app_versi_at'] ?? null) ?></td>
             <td><?= $r['aktif'] ? badge('aktif', 'ok') : badge('nonaktif', 'danger') ?></td>
             <td class="actions"><a class="btn sm ghost" href="?edit=<?= (int)$r['id'] ?>">Ubah</a>

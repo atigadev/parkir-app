@@ -52,7 +52,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     fputcsv($out, ['TOTAL', $sum['masuk'], $sum['keluar'], $sum['cash'], $sum['qris'], $sum['cash'] + $sum['qris'], $avgDur, $sum['tanpa_tiket'], $sum['denda'], $sum['gratis']], ';');
     fputcsv($out, [], ';');
     fputcsv($out, ['Shift ditutup', 'Petugas', 'Pos', 'Cash sistem', 'Setoran', 'Selisih', 'Catatan'], ';');
-    foreach ($shifts as $s) fputcsv($out, [$s['waktu_tutup'], $s['nama'], $s['pos_nama'], $s['total_cash_sistem'], $s['total_cash_setor'], $s['selisih'], $s['catatan']], ';');
+    foreach ($shifts as $s) fputcsv($out, array_map('csv_aman', [$s['waktu_tutup'], $s['nama'], $s['pos_nama'], $s['total_cash_sistem'], $s['total_cash_setor'], $s['selisih'], $s['catatan']]), ';');
     exit;
 }
 
@@ -64,7 +64,7 @@ layout_atas('Laporan', 'laporan.php');
 <div class="card">
   <div class="card-h">
     <form class="filters" method="get">
-      <label class="f">Jenis laporan<select name="mode" onchange="this.form.submit()"><option value="harian" <?= $mode === 'harian' ? 'selected' : '' ?>>Harian (per bulan)</option><option value="bulanan" <?= $mode === 'bulanan' ? 'selected' : '' ?>>Bulanan (per tahun)</option></select></label>
+      <label class="f">Jenis laporan<select name="mode" data-auto-submit><option value="harian" <?= $mode === 'harian' ? 'selected' : '' ?>>Harian (per bulan)</option><option value="bulanan" <?= $mode === 'bulanan' ? 'selected' : '' ?>>Bulanan (per tahun)</option></select></label>
       <?php if ($mode === 'harian'): ?>
         <label class="f">Bulan<input type="month" name="bulan" value="<?= e($bulan) ?>"></label>
       <?php else: ?>

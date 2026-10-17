@@ -1,4 +1,6 @@
-# Hanya gambar yang boleh disajikan; jangan pernah mengeksekusi skrip di sini.
+# Foto kendaraan (plat = data pribadi) TIDAK boleh dibuka langsung.
+# Disajikan hanya lewat foto.php dengan URL bertanda tangan & kedaluwarsa.
+Require all denied
 Options -Indexes -ExecCGI
 <IfModule mod_php7.c>
   php_flag engine off
@@ -6,7 +8,3 @@ Options -Indexes -ExecCGI
 <IfModule mod_php.c>
   php_flag engine off
 </IfModule>
-RemoveHandler .php .phtml .php5 .php7 .phar
-<FilesMatch "\.(?i:php\d?|phtml|phar|html?|js|svg)$">
-  Require all denied
-</FilesMatch>

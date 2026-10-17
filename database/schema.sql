@@ -20,6 +20,20 @@ CREATE TABLE IF NOT EXISTS petugas (
   UNIQUE KEY uk_token (api_token_hash)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS petugas_token (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  petugas_id        INT UNSIGNED NOT NULL,
+  token_hash        CHAR(64) NOT NULL,
+  perangkat         VARCHAR(120) NULL,
+  ip                VARCHAR(45) NULL,
+  dibuat            DATETIME NOT NULL,
+  kedaluwarsa       DATETIME NOT NULL,
+  terakhir_dipakai  DATETIME NULL,
+  UNIQUE KEY uk_token (token_hash),
+  KEY idx_petugas (petugas_id),
+  CONSTRAINT fk_token_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS shift (
   id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   petugas_id         INT UNSIGNED NOT NULL,
@@ -160,4 +174,4 @@ INSERT IGNORE INTO pengaturan (kunci, nilai) VALUES
  ('footer_resi',     'Simpan tiket ini dengan baik\nJangan tinggalkan tiket & barang berharga di kendaraan\nKehilangan/kerusakan barang bukan tanggung jawab pengelola'),
  ('footer_struk',    'Terima kasih atas kunjungan Anda'),
  ('telepon_lokasi',  ''),
- ('skema_versi',     '3');
+ ('skema_versi',     '4');

@@ -20,6 +20,7 @@ backup/*
 *.tgz
 *.sql
 !database/schema.sql
+!database/migrasi.sql
 *.bak
 *.log
 

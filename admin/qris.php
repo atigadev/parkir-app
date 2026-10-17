@@ -42,12 +42,12 @@ layout_atas('Rekonsiliasi QRIS', 'qris.php');
 <form method="post" class="card">
   <?= csrf_field() ?>
   <div class="card-h">
-    <div class="filters"><label class="f">Tanggal<input type="date" value="<?= e($tgl) ?>" onchange="location='?tgl='+this.value"></label></div>
+    <div class="filters"><label class="f">Tanggal<input type="date" value="<?= e($tgl) ?>" data-navigasi="?tgl="></label></div>
     <div class="actions"><button class="btn ok" name="aksi" value="verif">Tandai cocok</button><button class="btn ghost" name="aksi" value="batal">Batalkan tanda</button></div>
   </div>
   <div class="card-b flush table-wrap">
     <table>
-      <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('.cb').forEach(c=>c.checked=this.checked)" aria-label="Pilih semua"></th><th>Waktu</th><th>Plat</th><th class="num">Nominal</th><th>Pos / Petugas</th><th>Status</th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-pilih-semua=".cb" aria-label="Pilih semua"></th><th>Waktu</th><th>Plat</th><th class="num">Nominal</th><th>Pos / Petugas</th><th>Status</th></tr></thead>
       <tbody>
       <?php foreach ($rows as $r): ?>
         <tr>

@@ -21,7 +21,8 @@ if (is_post()) {
         flash($galat, 'err');
     } else {
         // Ganti password & cabut semua sesi aplikasi petugas milik akun ini.
-        q('UPDATE petugas SET password_hash = ?, api_token_hash = NULL, token_expires = NULL WHERE id = ?', [password_hash($baru, PASSWORD_DEFAULT), admin_id()]);
+        q('UPDATE petugas SET password_hash = ? WHERE id = ?', [password_hash($baru, PASSWORD_DEFAULT), admin_id()]);
+        token_cabut_semua(admin_id());
         log_aktivitas(admin_id(), 'ganti_password', admin_id());
         session_regenerate_id(true);
         unset($_SESSION['wajib_ganti_password']);

@@ -6,11 +6,18 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
 session_name('parkit_admin');
-session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'path' => base_url('/')]);
+session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => is_https(), 'path' => base_url('/')]);
 session_start();
 
-header('X-Frame-Options: DENY');
-header('X-Content-Type-Options: nosniff');
+// Sesi admin berakhir setelah 4 jam tidak ada aktivitas.
+const ADMIN_SESI_MENGANGGUR = 4 * 3600;
+if (!empty($_SESSION['admin']) && isset($_SESSION['aktif_terakhir']) && time() - $_SESSION['aktif_terakhir'] > ADMIN_SESI_MENGANGGUR) {
+    $_SESSION = [];
+    session_regenerate_id(true);
+}
+$_SESSION['aktif_terakhir'] = time();
+
+header_keamanan('admin');
 
 function admin(): ?array
 {
@@ -191,7 +198,7 @@ function layout_atas(string $judul, string $aktif = ''): void
     </div>
   </aside>
   <main class="main">
-    <header class="top"><button class="icon-btn menu-btn" onclick="document.getElementById('side').classList.toggle('open')" aria-label="Menu">☰</button><h1><?= e($judul) ?></h1></header>
+    <header class="top"><button class="icon-btn menu-btn" data-aksi="menu" aria-label="Menu">☰</button><h1><?= e($judul) ?></h1></header>
     <?php foreach ($_SESSION['flash'] ?? [] as [$t, $p]): ?><div class="alert <?= e($t) ?>"><?= e($p) ?></div><?php endforeach; unset($_SESSION['flash']); ?>
 <?php
 }
@@ -214,10 +221,22 @@ function layout_bawah(): void
   </div>
   <div class="lb-hint muted">Klik foto untuk zoom · Esc untuk menutup</div>
 </dialog>
-<script>
+<script nonce="<?= e(csp_nonce()) ?>">
 document.addEventListener('submit', function (e) {
   var m = e.target.getAttribute('data-confirm');
   if (m && !confirm(m)) e.preventDefault();
+});
+// Pengganti handler inline (diblokir CSP): menu, kirim form otomatis, navigasi dari input, pilih semua.
+document.addEventListener('click', function (e) {
+  var t = e.target.closest('[data-aksi="menu"]');
+  if (t) document.getElementById('side').classList.toggle('open');
+  var ps = e.target.closest('[data-pilih-semua]');
+  if (ps) document.querySelectorAll(ps.getAttribute('data-pilih-semua')).forEach(function (c) { c.checked = ps.checked; });
+});
+document.addEventListener('change', function (e) {
+  if (e.target.matches('[data-auto-submit]')) e.target.form.submit();
+  var nav = e.target.getAttribute('data-navigasi');
+  if (nav) location = nav + encodeURIComponent(e.target.value);
 });
 
 // Lightbox foto: link dengan atribut data-foto dibuka di modal, bukan halaman baru.

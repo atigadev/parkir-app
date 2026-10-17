@@ -6,6 +6,11 @@
 <Files "index.html">
   Header set Cache-Control "no-cache"
 </Files>
-
+<Files "versi.js">
+  Header set Cache-Control "no-cache"
+</Files>
+# Aplikasi petugas hanya boleh menjalankan skrip dari server sendiri (tanpa skrip inline / eval).
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=()"
 </IfModule>
 AddType application/manifest+json .webmanifest

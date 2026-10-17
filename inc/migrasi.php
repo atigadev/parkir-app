@@ -13,12 +13,34 @@
  */
 declare(strict_types=1);
 
-const SKEMA_VERSI = 3;
+const SKEMA_VERSI = 4;
 
 function kolom_ada(string $tabel, string $kolom): bool
 {
     return (bool)q_val('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$tabel, $kolom]);
 }
+
+function tabel_ada(string $tabel): bool
+{
+    return (bool)q_val('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$tabel]);
+}
+
+/** Struktur tabel sesi per perangkat (sama dengan database/schema.sql & migrasi.sql). */
+const SQL_PETUGAS_TOKEN = <<<'SQL'
+CREATE TABLE IF NOT EXISTS petugas_token (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  petugas_id        INT UNSIGNED NOT NULL,
+  token_hash        CHAR(64) NOT NULL,
+  perangkat         VARCHAR(120) NULL,
+  ip                VARCHAR(45) NULL,
+  dibuat            DATETIME NOT NULL,
+  kedaluwarsa       DATETIME NOT NULL,
+  terakhir_dipakai  DATETIME NULL,
+  UNIQUE KEY uk_token (token_hash),
+  KEY idx_petugas (petugas_id),
+  CONSTRAINT fk_token_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
+) ENGINE=InnoDB
+SQL;
 
 function indeks_ada(string $tabel, string $indeks): bool
 {
@@ -94,6 +116,12 @@ function langkah_migrasi(): array
             if (tambah_kolom('kendaraan_masuk', 'catatan_sistem', 'VARCHAR(255) NULL AFTER offline')) $ubah[] = 'kendaraan_masuk.catatan_sistem';
             if (tambah_indeks('log_aktivitas', 'idx_aksi_ref_waktu', 'INDEX idx_aksi_ref_waktu (aksi, referensi_id, waktu)')) $ubah[] = 'indeks log login';
             return $ubah;
+        },
+        // v4: sesi aplikasi petugas per perangkat (login di HP kedua tidak lagi memutus HP pertama)
+        4 => function (): array {
+            if (tabel_ada('petugas_token')) return [];
+            db()->exec(SQL_PETUGAS_TOKEN);
+            return ['tabel petugas_token'];
         },
     ];
 }

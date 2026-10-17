@@ -9,7 +9,7 @@ require __DIR__ . '/../inc/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
-header('X-Content-Type-Options: nosniff');
+header_keamanan('api');
 
 function kirim(array $data, int $status = 200): void
 {
@@ -54,13 +54,10 @@ function petugas_dari_token(): array
         $h = $hs['authorization'] ?? '';
     }
     if (!preg_match('/^Bearer\s+([a-f0-9]{64})$/i', trim($h), $m)) gagal('Sesi tidak valid, silakan login.', 'auth', 401);
-    $p = q_one('SELECT id, nama, username, role, aktif, token_expires FROM petugas WHERE api_token_hash = ?', [hash('sha256', strtolower($m[1]))]);
-    if (!$p || !$p['aktif'] || strtotime((string)$p['token_expires']) < time()) gagal('Sesi berakhir, silakan login ulang.', 'auth', 401);
-    // Perpanjang sesi selama aplikasi dipakai.
-    if (strtotime((string)$p['token_expires']) - time() < 86400) {
-        q('UPDATE petugas SET token_expires = ? WHERE id = ?', [date('Y-m-d H:i:s', time() + 86400 * (int)config('token_days', 7)), $p['id']]);
-    }
+    $p = token_petugas($m[1]);
+    if (!$p) gagal('Sesi berakhir, silakan login ulang.', 'auth', 401);
     $p['id'] = (int)$p['id'];
+    $p['_token'] = strtolower($m[1]);
     catat_versi_app($p['id']);
     return $p;
 }
@@ -90,7 +87,7 @@ function wajib_shift(array $p, string $pos): array
 
 function url_foto(?string $path): ?string
 {
-    return $path ? base_url($path) : null;
+    return url_foto_aman($path); // URL bertanda tangan, berlaku 2 jam
 }
 
 function data_tiket(array $km): array
@@ -183,10 +180,8 @@ try {
             gagal('Username atau password salah.', 'login', 401);
         }
         if (!$p['aktif']) gagal('Akun dinonaktifkan. Hubungi admin.', 'login', 403);
-        $token = bin2hex(random_bytes(32));
-        q('UPDATE petugas SET api_token_hash = ?, token_expires = ?, last_login = ? WHERE id = ?', [
-            hash('sha256', $token), date('Y-m-d H:i:s', time() + 86400 * (int)config('token_days', 7)), now(), $p['id'],
-        ]);
+        $token = token_buat((int)$p['id']); // token per perangkat: perangkat lain milik akun ini tetap tersambung
+        q('UPDATE petugas SET last_login = ? WHERE id = ?', [now(), $p['id']]);
         catat_login(true, (int)$p['id'], $username, 'app', ['versi' => $_SERVER['HTTP_X_APP_VERSI'] ?? null]);
         catat_versi_app((int)$p['id']);
         $shift = shift_aktif((int)$p['id']);
@@ -200,7 +195,7 @@ try {
     case 'auth.logout':
         wajib_metode('POST');
         $p = petugas_dari_token();
-        q('UPDATE petugas SET api_token_hash = NULL, token_expires = NULL WHERE id = ?', [$p['id']]);
+        token_cabut($p['_token']); // hanya perangkat ini
         log_aktivitas($p['id'], 'logout', null, null, ['via' => 'app']);
         ok();
 
