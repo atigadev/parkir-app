@@ -95,6 +95,18 @@ function badge_status(string $s): string
     return badge($s, $map[$s] ?? '');
 }
 
+/** Lencana versi aplikasi petugas dibanding versi terbaru di server. */
+function badge_versi(?string $versi, ?string $waktu = null): string
+{
+    if (!$versi) return '<span class="muted" title="Belum ada data: petugas belum membuka aplikasi versi terbaru">–</span>';
+    $terbaru = versi_pwa_terbaru();
+    $kapan = $waktu ? '<br><small class="muted">dilaporkan ' . e(tgl($waktu, 'd/m H:i')) . '</small>' : '';
+    if ($terbaru && nomor_versi($versi) < nomor_versi($terbaru)) {
+        return badge($versi . ' · perlu update', 'warn') . $kapan;
+    }
+    return badge($versi, 'ok') . $kapan;
+}
+
 function pagination(int $total, int $hal, int $per): string
 {
     $jml = (int)ceil($total / $per);

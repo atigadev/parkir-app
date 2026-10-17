@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="struk.css?v=8">
-<link rel="stylesheet" href="app.css?v=8">
+<link rel="stylesheet" href="struk.css?v=9">
+<link rel="stylesheet" href="app.css?v=9">
 </head>
 <body>
 
@@ -22,6 +22,7 @@
     <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
     <button class="btn primary xl" type="submit">Masuk</button>
     <p class="muted small center" id="login-net"></p>
+    <p class="muted small center" id="ver-login"></p>
   </form>
 </section>
 
@@ -55,6 +56,7 @@
       <span class="chip" id="chip-bat" hidden></span>
     </div>
   </header>
+  <div class="banner-printer info" id="banner-update" role="status" hidden><span id="bu-teks">Versi baru aplikasi tersedia.</span><button type="button" id="bu-aksi">Muat ulang</button></div>
   <div class="banner-printer warn" id="banner-printer" role="alert" hidden><span id="bp-teks"></span><button type="button" id="bp-aksi">Hubungkan</button></div>
 
   <!-- POS MASUK -->
@@ -160,7 +162,7 @@
         <div id="sync-gagal" class="list"></div>
       </div>
       <button type="button" class="btn ghost block" id="btn-logout">Keluar akun</button>
-      <p class="muted small center">ParkIt PWA v1.0</p>
+      <p class="muted small center" id="ver-shift">ParkIt</p>
     </div>
   </section>
 
@@ -181,10 +183,11 @@
 
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
+<script src="versi.js?v=9"></script>
 <script src="js/tarif.js"></script>
-<script src="js/resi.js?v=8"></script>
-<script src="js/printer.js?v=8"></script>
+<script src="js/resi.js?v=9"></script>
+<script src="js/printer.js?v=9"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

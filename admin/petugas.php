@@ -80,7 +80,7 @@ layout_atas('Petugas', 'petugas.php');
     <div class="card-h"><h2>Daftar akun</h2></div>
     <div class="card-b flush table-wrap">
       <table>
-        <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>Login terakhir</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>Login terakhir</th><th>Versi aplikasi</th><th>Status</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($rows as $r): ?>
           <tr>
@@ -88,6 +88,7 @@ layout_atas('Petugas', 'petugas.php');
             <td class="mono"><?= e($r['username']) ?></td>
             <td><?= badge($r['role'], $r['role'] === 'admin' ? 'info' : '') ?></td>
             <td><?= tgl($r['last_login']) ?></td>
+            <td><?= badge_versi($r['app_versi'] ?? null, $r['app_versi_at'] ?? null) ?></td>
             <td><?= $r['aktif'] ? badge('aktif', 'ok') : badge('nonaktif', 'danger') ?></td>
             <td class="actions"><a class="btn sm ghost" href="?edit=<?= (int)$r['id'] ?>">Ubah</a>
               <?php if ((int)$r['id'] !== admin_id()): ?><form method="post" data-confirm="<?= $r['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?> akun <?= e($r['username']) ?>?"><?= csrf_field() ?><input type="hidden" name="aksi" value="toggle"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="btn sm ghost"><?= $r['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button></form><?php endif; ?></td>

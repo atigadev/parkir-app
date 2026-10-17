@@ -102,11 +102,35 @@ Rincian lengkap beserta salinan tarif disimpan di `transaksi_keluar.rincian_biay
 
 Ubah `TUJUAN` di `backup.bat` ke disk lain atau NAS. Saran operasional lain (sesuai spesifikasi): UPS untuk server dan access point, matikan update otomatis Windows di jam operasional, `innodb_buffer_pool_size` 1–2 GB.
 
+## Update & migrasi database
+
+Migrasi skema bersifat **idempoten**, artinya aman dijalankan berulang kali. Kolom dan pengaturan hanya ditambahkan bila belum ada, dan nilai yang sudah diatur admin tidak pernah ditimpa.
+
+- **Otomatis:** setelah `git pull` atau upload file, permintaan web pertama menerapkan migrasi yang belum dijalankan (`inc/migrasi.php`). Tidak perlu menjalankan SQL manual. Prosesnya dikunci, sehingga dua permintaan bersamaan tetap aman.
+- **Manual lewat terminal:** `php cli/migrasi.php`. Tambahkan `--periksa` untuk memeriksa dan memperbaiki semua langkah, misalnya setelah memulihkan backup lama.
+- **Manual lewat phpMyAdmin:** impor `database/migrasi.sql`. Gunakan cara ini bila akun database aplikasi tidak punya hak `ALTER`. Kompatibel dengan MySQL dan MariaDB.
+- **Instalasi baru:** cukup `database/schema.sql`, yang juga aman diimpor ulang.
+
+Versi skema tersimpan di `pengaturan.skema_versi`. Untuk migrasi baru, tambahkan langkah di `langkah_migrasi()`, naikkan `SKEMA_VERSI`, tambahkan SQL yang setara di `migrasi.sql`, dan tulis struktur akhirnya di `schema.sql`.
+
+## Rilis aplikasi petugas (PWA)
+
+1. Naikkan `PARKIT_VERSI` dan `PARKIT_TANGGAL` di `pwa/versi.js`. Ini satu-satunya sumber nomor versi.
+2. Samakan query `?v=` di `pwa/index.html` dan `pwa/sw.js` dengan versi baru.
+3. Setelah server diperbarui, HP petugas mendeteksi versi baru dalam beberapa detik saat aplikasi dibuka, atau paling lambat 10 menit.
+   - Di layar kerja muncul banner **"Versi baru tersedia — Muat ulang"**.
+   - Di layar login atau pilih pos, aplikasi langsung memuat versi baru.
+4. Versi yang sedang dipakai tiap HP terlihat di **Admin → Petugas** dan di tabel **Shift berjalan** pada dashboard. Versi lama ditandai *perlu update*.
+
 ## Pengujian
 
 ```
 php tests/tarif_test.php
+php tests/ocr_test.php
+php tests/migrasi_test.php
 ```
+
+`migrasi_test.php` memakai database uji sementara (`parkit_ujimigrasi`) yang dibuat lalu dihapus otomatis, jadi database aplikasi tidak tersentuh.
 
 Perintah di atas menguji mesin tarif PHP dan membuat `tests/tarif_cases.js`. Versi JS diuji dengan membuka `tests/tarif_parity.html` langsung dari disk (`file:///…`), atau secara headless:
 

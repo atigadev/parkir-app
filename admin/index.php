@@ -29,7 +29,8 @@ foreach (q_all("SELECT HOUR(waktu_masuk) j, COUNT(*) n FROM kendaraan_masuk WHER
 }
 $maxJam = max(1, max($perJam));
 
-$shiftBuka = q_all("SELECT s.*, p.nama FROM shift s JOIN petugas p ON p.id = s.petugas_id WHERE s.waktu_tutup IS NULL ORDER BY s.waktu_buka");
+$kolVersi = kolom_ada('petugas', 'app_versi') ? ', p.app_versi, p.app_versi_at' : '';
+$shiftBuka = q_all("SELECT s.*, p.nama$kolVersi FROM shift s JOIN petugas p ON p.id = s.petugas_id WHERE s.waktu_tutup IS NULL ORDER BY s.waktu_buka");
 $voidMinta = (int)q_val("SELECT COUNT(*) FROM kendaraan_masuk WHERE void_diminta_at IS NOT NULL AND status <> 'void' AND void_oleh IS NULL");
 $qrisBelum = (int)q_val("SELECT COUNT(*) FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.status <> 'void' AND tk.metode_bayar = 'qris' AND tk.qris_terverifikasi = 0 AND tk.total_biaya > 0");
 $selisihHari = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih),0) total FROM shift WHERE waktu_tutup >= ? AND selisih <> 0", [$hari]);
@@ -86,7 +87,7 @@ layout_atas('Dashboard', 'index.php');
   <div class="card-h"><h2>Shift berjalan</h2><a href="shift.php" class="btn sm ghost">Semua shift</a></div>
   <div class="card-b flush table-wrap">
     <table>
-      <thead><tr><th>Petugas</th><th>Pos</th><th>Dibuka</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Cash sistem</th><th class="num">QRIS</th></tr></thead>
+      <thead><tr><th>Petugas</th><th>Pos</th><th>Dibuka</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Cash sistem</th><th class="num">QRIS</th><th>Versi aplikasi</th></tr></thead>
       <tbody>
       <?php foreach ($shiftBuka as $s): $rs = ringkasan_shift((int)$s['id']); ?>
         <tr>
@@ -97,8 +98,9 @@ layout_atas('Dashboard', 'index.php');
           <td class="num"><?= $rs['kendaraan_keluar'] ?></td>
           <td class="num"><?= rupiah($rs['total_cash']) ?></td>
           <td class="num"><?= rupiah($rs['total_qris']) ?></td>
+          <td><?= badge_versi($s['app_versi'] ?? null, $s['app_versi_at'] ?? null) ?></td>
         </tr>
-      <?php endforeach; if (!$shiftBuka): ?><tr><td colspan="7" class="empty">Tidak ada shift yang sedang berjalan.</td></tr><?php endif; ?>
+      <?php endforeach; if (!$shiftBuka): ?><tr><td colspan="8" class="empty">Tidak ada shift yang sedang berjalan.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>

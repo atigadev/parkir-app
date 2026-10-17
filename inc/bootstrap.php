@@ -18,6 +18,7 @@ require_once __DIR__ . '/tarif.php';
 require_once __DIR__ . '/qrtoken.php';
 require_once __DIR__ . '/parkir.php';
 require_once __DIR__ . '/ocr.php';
+require_once __DIR__ . '/migrasi.php';
 
 function config(string $key, $default = null)
 {
@@ -64,4 +65,9 @@ function q_val(string $sql, array $params = [])
 function q_all(string $sql, array $params = []): array
 {
     return q($sql, $params)->fetchAll();
+}
+
+// Terapkan migrasi skema yang belum dijalankan (sekali, lalu hanya 1 query ringan per permintaan).
+if (PHP_SAPI !== 'cli' || in_array(basename($_SERVER['SCRIPT_NAME'] ?? ''), ['maintenance.php'], true)) {
+    migrasi_otomatis();
 }

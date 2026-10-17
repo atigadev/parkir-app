@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS petugas (
   api_token_hash   CHAR(64) NULL,
   token_expires    DATETIME NULL,
   last_login       DATETIME NULL,
+  app_versi        VARCHAR(20) NULL,
+  app_versi_at     DATETIME NULL,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_token (api_token_hash)
 ) ENGINE=InnoDB;
@@ -154,4 +156,5 @@ INSERT IGNORE INTO pengaturan (kunci, nilai) VALUES
  ('retensi_foto_hari', '60'),
  ('footer_resi',     'Simpan tiket ini dengan baik\nJangan tinggalkan tiket & barang berharga di kendaraan\nKehilangan/kerusakan barang bukan tanggung jawab pengelola'),
  ('footer_struk',    'Terima kasih atas kunjungan Anda'),
- ('telepon_lokasi',  '');
+ ('telepon_lokasi',  ''),
+ ('skema_versi',     '2');

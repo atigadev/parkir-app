@@ -3,6 +3,7 @@
   'use strict';
 
   var API = '../api/index.php?r=';
+  var VERSI_APP = window.PARKIT_VERSI || 'dev'; // dari pwa/versi.js
   var S = {
     token: null, petugas: null, shift: null, config: null,
     online: navigator.onLine, tab: 'kerja', jenis: 'motor',
@@ -63,6 +64,7 @@
     var headers = {};
     var body = opts.body;
     if (S.token) headers.Authorization = 'Bearer ' + S.token;
+    headers['X-App-Versi'] = VERSI_APP;
     if (body && !(body instanceof FormData)) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(body); }
     return fetch(API + rute + (opts.query || ''), {
       method: opts.method || (body ? 'POST' : 'GET'), headers: headers, body: body, signal: ctrl ? ctrl.signal : undefined, cache: 'no-store'
@@ -1000,8 +1002,53 @@
   });
 
   // ================================================================ start
+  // ================================================================ versi & pembaruan
+  function teksVersi(v, tgl) {
+    var d = tgl ? new Date(tgl + 'T00:00:00') : null;
+    return 'ParkIt ' + v + (d && !isNaN(d) ? ' · ' + d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  }
+  $('#ver-login').textContent = teksVersi(VERSI_APP, window.PARKIT_TANGGAL);
+  $('#ver-shift').textContent = teksVersi(VERSI_APP, window.PARKIT_TANGGAL);
+
+  var versiBaru = null;
+  /** Aman memuat ulang: tidak ada lembar (pembayaran/konfirmasi) terbuka dan tidak sedang menyimpan. */
+  function amanMuatUlang() { return $('#sheet').hidden; }
+  function nomorVersi(v) { var n = parseInt(String(v || "").replace(/\D/g, ""), 10); return isNaN(n) ? 0 : n; }
+  function adaVersiBaru(v) {
+    if (!v || nomorVersi(v) <= nomorVersi(VERSI_APP)) return; // hanya versi yang lebih baru
+    versiBaru = v;
+    // Belum bekerja (login / pilih pos) atau aplikasi di latar belakang: langsung pakai versi baru.
+    if (!$('#app').hidden && document.visibilityState === 'visible') {
+      $('#bu-teks').textContent = 'Versi baru ' + v + ' tersedia (sekarang ' + VERSI_APP + ').';
+      $('#banner-update').hidden = false;
+    } else if (amanMuatUlang()) {
+      location.reload();
+    }
+  }
+  $('#bu-aksi').addEventListener('click', function () {
+    if (!amanMuatUlang()) return toast('Selesaikan transaksi yang terbuka dulu, lalu muat ulang.', 'bad');
+    location.reload();
+  });
+  document.addEventListener('visibilitychange', function () {
+    // Kembali dari latar belakang dengan versi baru menunggu: muat ulang otomatis bila aman.
+    if (document.visibilityState === 'visible' && versiBaru && amanMuatUlang()) location.reload();
+  });
+
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+    var punyaController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      // Periksa pembaruan berkala & saat aplikasi kembali dibuka.
+      setInterval(function () { if (S.online) reg.update().catch(function () {}); }, 10 * 60 * 1000);
+      document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') reg.update().catch(function () {}); });
+    }).catch(function () {});
+    navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.versi) adaVersiBaru(e.data.versi); });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      // Service worker versi baru mengambil alih (pemasangan pertama tidak dihitung).
+      if (!punyaController) { punyaController = true; return; }
+      if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('versi');
+    });
+    // Jaga-jaga: aplikasi dibuka dari cache lama sementara service worker sudah versi baru.
+    if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('versi');
   }
   var sesi0 = load('sesi', null);
   if (sesi0 && sesi0.petugas) $('#f-login').username.value = sesi0.petugas.username || '';

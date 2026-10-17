@@ -220,3 +220,4 @@ input:focus, select:focus { outline: none; border-color: var(--pos); box-shadow:
 .banner-printer.bad { background: #fde3e1; color: #9b1c15; }
 .banner-printer span { flex: 1; min-width: 0; }
 .banner-printer button { flex: none; border: 0; border-radius: 9px; padding: 8px 12px; font: inherit; font-weight: 700; background: rgba(0,0,0,.12); color: inherit; min-height: 38px; }
+.banner-printer.info { background: #dcebff; color: #0b4a9e; }

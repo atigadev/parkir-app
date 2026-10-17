@@ -61,7 +61,22 @@ function petugas_dari_token(): array
         q('UPDATE petugas SET token_expires = ? WHERE id = ?', [date('Y-m-d H:i:s', time() + 86400 * (int)config('token_days', 7)), $p['id']]);
     }
     $p['id'] = (int)$p['id'];
+    catat_versi_app($p['id']);
     return $p;
+}
+
+/** Catat versi aplikasi petugas (header X-App-Versi) — diperbarui bila berubah atau tiap 10 menit. */
+function catat_versi_app(int $petugasId): void
+{
+    $v = (string)($_SERVER['HTTP_X_APP_VERSI'] ?? '');
+    if (!preg_match('/^v\d{1,4}$/', $v)) return;
+    try {
+        q('UPDATE petugas SET app_versi = ?, app_versi_at = ? WHERE id = ? AND (app_versi IS NULL OR app_versi <> ? OR app_versi_at < ?)', [
+            $v, now(), $petugasId, $v, date('Y-m-d H:i:s', time() - 600),
+        ]);
+    } catch (Throwable $e) {
+        // kolom belum ada (migrasi gagal): abaikan
+    }
 }
 
 function wajib_shift(array $p, string $pos): array
@@ -168,7 +183,8 @@ try {
         q('UPDATE petugas SET api_token_hash = ?, token_expires = ?, last_login = ? WHERE id = ?', [
             hash('sha256', $token), date('Y-m-d H:i:s', time() + 86400 * (int)config('token_days', 7)), now(), $p['id'],
         ]);
-        log_aktivitas((int)$p['id'], 'login', null, null, ['via' => 'app']);
+        log_aktivitas((int)$p['id'], 'login', null, null, ['via' => 'app', 'versi' => $_SERVER['HTTP_X_APP_VERSI'] ?? null]);
+        catat_versi_app((int)$p['id']);
         $shift = shift_aktif((int)$p['id']);
         ok([
             'token'   => $token,
