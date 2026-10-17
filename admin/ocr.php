@@ -43,7 +43,7 @@ layout_atas('Kualitas OCR', 'ocr.php');
         <thead><tr><th>Foto</th><th>OCR</th><th>Dikoreksi jadi</th><th>Waktu</th></tr></thead>
         <tbody>
         <?php foreach ($contoh as $c): ?>
-          <tr><td><?php if ($c['foto_masuk_url']): ?><a href="<?= e(base_url($c['foto_masuk_url'])) ?>" target="_blank"><img class="thumb" src="<?= e(base_url($c['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
+          <tr><td><?php if ($c['foto_masuk_url']): ?><a href="<?= e(base_url($c['foto_masuk_url'])) ?>" data-foto="<?= e('OCR: ' . $c['plat_hasil_ocr'] . ' → dikoreksi: ' . $c['plat_nomor']) ?>"><img class="thumb" src="<?= e(base_url($c['foto_masuk_url'])) ?>" alt="" loading="lazy"></a><?php endif; ?></td>
             <td><span class="plat" style="text-decoration:line-through;opacity:.7"><?= e($c['plat_hasil_ocr']) ?></span></td><td><span class="plat"><?= e($c['plat_nomor']) ?></span></td><td><?= tgl($c['waktu_masuk']) ?></td></tr>
         <?php endforeach; if (!$contoh): ?><tr><td colspan="4" class="empty">Belum ada koreksi.</td></tr><?php endif; ?>
         </tbody>

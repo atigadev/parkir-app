@@ -65,6 +65,7 @@ input:focus, select:focus { outline: none; border-color: var(--pos); box-shadow:
 
 /* Login & pos */
 .screen { min-height: 100vh; min-height: 100dvh; }
+#app .screen { min-height: 0; }
 .login { max-width: 380px; margin: 0 auto; padding: 48px 20px; display: grid; gap: 16px; }
 .login-brand { text-align: center; margin-bottom: 12px; }
 .login-brand h1 { font-size: 28px; margin-top: 10px; }
@@ -92,15 +93,20 @@ input:focus, select:focus { outline: none; border-color: var(--pos); box-shadow:
 .chip.bad { background: rgba(208,52,44,.35); color: #ffb3ae; }
 
 /* Viewfinder */
-.tab { padding-bottom: var(--tabbar); }
-.viewfinder { position: relative; background: #000; aspect-ratio: 3 / 4; max-height: calc(100dvh - var(--tabbar) - 210px); width: 100%; overflow: hidden; margin: 0 auto; }
+/* Layout aplikasi: topbar + konten (mengisi sisa layar) + tabbar tetap. Kamera mengisi ruang tersisa
+   sehingga kontrol & tombol rana selalu terlihat di atas tabbar, berapa pun tinggi layar HP. */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#app > .topbar { flex: none; }
+.tab { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); }
+#s-masuk, #s-keluar { display: flex; flex-direction: column; overflow: hidden; }
+.viewfinder { position: relative; background: #000; flex: 1; min-height: 160px; width: 100%; overflow: hidden; }
 .viewfinder video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .vf-guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .vf-guide span { width: 78%; aspect-ratio: 3.2 / 1; border: 3px solid rgba(255,255,255,.85); border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.28); display: grid; place-items: end center; color: #fff; font-size: 13px; font-weight: 600; padding-bottom: 6px; transform: translateY(-4%); }
 .vf-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: #fff; background: rgba(0,0,0,.72); font-weight: 600; }
 .viewfinder.qr #reader { width: 100%; height: 100%; }
 .viewfinder.qr #reader video { object-fit: cover; }
-.controls { padding: 14px 16px; display: grid; gap: 14px; max-width: 640px; margin: 0 auto; }
+.controls { flex: none; padding: 12px 16px; display: grid; gap: 12px; width: 100%; max-width: 640px; margin: 0 auto; }
 .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 4px; }
 .seg button { border: 0; background: none; font: inherit; font-weight: 700; padding: 12px; border-radius: 10px; color: var(--muted); min-height: 50px; font-size: 17px; }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.15); outline: 2px solid var(--pos); }
@@ -186,4 +192,12 @@ input:focus, select:focus { outline: none; border-color: var(--pos); box-shadow:
   .r-plat { font-size: 20px; font-weight: 800; margin: 4px 0; }
   .r-qr svg { width: 38mm; height: 38mm; }
   .r-tot td { font-weight: 800; font-size: 14px; }
+}
+
+/* Layar HP pendek: kontrol lebih ringkas */
+@media (max-height: 740px) {
+  .seg button { min-height: 42px; padding: 8px; font-size: 16px; }
+  .shutter { width: 68px; height: 68px; border-width: 4px; box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 34px var(--pos); }
+  .btn.round { width: 48px; height: 48px; }
+  .controls { padding: 10px 16px; gap: 10px; }
 }

@@ -153,7 +153,7 @@ function layout_atas(string $judul, string $aktif = ''): void
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($judul) ?> · ParkIt Admin</title>
 <link rel="icon" href="<?= e(base_url('pwa/icons/icon.svg')) ?>">
-<link rel="stylesheet" href="<?= e(base_url('admin/assets/admin.css')) ?>?v=1">
+<link rel="stylesheet" href="<?= e(base_url('admin/assets/admin.css')) ?>?v=2">
 </head>
 <body>
 <div class="shell">
@@ -183,11 +183,65 @@ function layout_bawah(): void
     ?>
   </main>
 </div>
+<dialog class="lightbox" id="lightbox" aria-label="Foto kendaraan">
+  <div class="lb-bar">
+    <span class="lb-cap" id="lb-cap"></span>
+    <a class="btn sm ghost" id="lb-asli" href="#" target="_blank" rel="noopener">Ukuran asli</a>
+    <button type="button" class="icon-btn lb-x" id="lb-x" aria-label="Tutup">✕</button>
+  </div>
+  <div class="lb-stage" id="lb-stage">
+    <button type="button" class="lb-nav prev" id="lb-prev" aria-label="Foto sebelumnya">‹</button>
+    <img id="lb-img" alt="">
+    <button type="button" class="lb-nav next" id="lb-next" aria-label="Foto berikutnya">›</button>
+  </div>
+  <div class="lb-hint muted">Klik foto untuk zoom · Esc untuk menutup</div>
+</dialog>
 <script>
 document.addEventListener('submit', function (e) {
   var m = e.target.getAttribute('data-confirm');
   if (m && !confirm(m)) e.preventDefault();
 });
+
+// Lightbox foto: link dengan atribut data-foto dibuka di modal, bukan halaman baru.
+(function () {
+  var dlg = document.getElementById('lightbox');
+  if (!dlg || !dlg.showModal) return; // browser lama: link tetap membuka foto biasa
+  var img = document.getElementById('lb-img'), cap = document.getElementById('lb-cap'), asli = document.getElementById('lb-asli');
+  var prev = document.getElementById('lb-prev'), next = document.getElementById('lb-next');
+  var daftar = [], idx = 0;
+
+  function tampil(i) {
+    idx = (i + daftar.length) % daftar.length;
+    var a = daftar[idx];
+    img.classList.remove('zoom');
+    img.src = a.href;
+    cap.textContent = a.getAttribute('data-foto') + (daftar.length > 1 ? '  (' + (idx + 1) + '/' + daftar.length + ')' : '');
+    asli.href = a.href;
+    prev.hidden = next.hidden = daftar.length < 2;
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-foto]');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    var grup = a.getAttribute('data-grup');
+    daftar = grup ? Array.prototype.slice.call(document.querySelectorAll('a[data-foto][data-grup="' + grup + '"]')) : [a];
+    tampil(daftar.indexOf(a));
+    dlg.showModal();
+  });
+
+  document.getElementById('lb-x').addEventListener('click', function () { dlg.close(); });
+  prev.addEventListener('click', function () { tampil(idx - 1); });
+  next.addEventListener('click', function () { tampil(idx + 1); });
+  img.addEventListener('click', function () { img.classList.toggle('zoom'); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg || e.target.id === 'lb-stage') dlg.close(); });
+  dlg.addEventListener('keydown', function (e) {
+    if (daftar.length < 2) return;
+    if (e.key === 'ArrowLeft') tampil(idx - 1);
+    if (e.key === 'ArrowRight') tampil(idx + 1);
+  });
+  dlg.addEventListener('close', function () { img.removeAttribute('src'); });
+})();
 </script>
 </body>
 </html>
