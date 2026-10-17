@@ -1,0 +1,168 @@
+<?php
+/**
+ * Uji API ujung-ke-ujung: alur normal + skenario kecurangan/serangan dari laporan QA.
+ *
+ *   php tests/api_test.php [URL_APLIKASI]       default: http://localhost/parkit-app
+ *
+ * Membuat akun & data uji sementara (petugas id 990–993, plat "QA ...") lalu menghapusnya.
+ * HANYA untuk server lokal/staging: menolak berjalan ke alamat selain localhost kecuali diberi --yakin.
+ */
+declare(strict_types=1);
+if (PHP_SAPI !== 'cli') exit;
+$_SERVER['DOCUMENT_ROOT'] = dirname(__DIR__, 2);
+require __DIR__ . '/../inc/bootstrap.php';
+
+$args = array_values(array_filter(array_slice($argv, 1), function ($a) { return $a !== '--yakin'; }));
+$BASE = rtrim($args[0] ?? 'http://localhost/parkit-app', '/');
+if (!preg_match('#^https?://(localhost|127\.0\.0\.1)([:/]|$)#', $BASE) && !in_array('--yakin', $argv, true)) {
+    fwrite(STDERR, "Menolak menguji $BASE (bukan localhost). Tambahkan --yakin bila ini server staging.\n");
+    exit(2);
+}
+
+$gagal = 0;
+function cek(string $nama, bool $ok, string $info = ''): void
+{
+    global $gagal;
+    if (!$ok) $gagal++;
+    printf("%s %s%s\n", $ok ? 'LULUS' : 'GAGAL', $nama, $info !== '' ? "  ($info)" : '');
+}
+/** Panggil API. $body array -> JSON, atau ['_form' => [...]] -> multipart. */
+function api(string $rute, ?string $token = null, $body = null, array $header = []): array
+{
+    global $BASE;
+    $ch = curl_init("$BASE/api/index.php?r=$rute");
+    $h = $header;
+    if ($token) $h[] = "Authorization: Bearer $token";
+    if (is_array($body) && isset($body['_form'])) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body['_form']);
+    } elseif ($body !== null) {
+        $h[] = 'Content-Type: application/json';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    }
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $h, CURLOPT_TIMEOUT => 20]);
+    $res = curl_exec($ch);
+    $kode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $j = json_decode((string)$res, true) ?: ['ok' => false, 'error' => 'respons bukan JSON: ' . substr((string)$res, 0, 120)];
+    $j['_http'] = $kode;
+    return $j;
+}
+function jkt(int $ts): string { return date('Y-m-d H:i:s', $ts); }
+
+const PASS = 'UjiQa#2026';
+$akun = [990 => ['qa_masuk', 'masuk'], 991 => ['qa_keluar', 'keluar'], 992 => ['qa_kunci', null], 993 => ['qa_dua_hp', null]];
+
+function bersihkan(): void
+{
+    q("DELETE tk FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.petugas_id BETWEEN 990 AND 993 OR tk.petugas_id BETWEEN 990 AND 993");
+    q("DELETE FROM kendaraan_masuk WHERE petugas_id BETWEEN 990 AND 993");
+    q("DELETE FROM shift WHERE petugas_id BETWEEN 990 AND 993");
+    q("DELETE FROM log_aktivitas WHERE petugas_id BETWEEN 990 AND 993 OR referensi_id LIKE 'qa\\_%'");
+    q("DELETE FROM petugas WHERE id BETWEEN 990 AND 993");
+}
+
+try {
+    bersihkan();
+    foreach ($akun as $id => [$u]) {
+        q("INSERT INTO petugas (id, nama, username, password_hash, role) VALUES (?, ?, ?, ?, 'petugas')", [$id, 'QA ' . $u, $u, password_hash(PASS, PASSWORD_DEFAULT)]);
+    }
+    $login = function (string $u, string $p = PASS): array { return api('auth.login', null, ['username' => $u, 'password' => $p]); };
+    $tm = $login('qa_masuk')['data']['token'] ?? '';
+    $tk = $login('qa_keluar')['data']['token'] ?? '';
+    cek('0. login petugas uji', $tm !== '' && $tk !== '');
+    api('shift.buka', $tm, ['pos' => 'masuk', 'pos_nama' => 'QA Masuk']);
+    api('shift.buka', $tk, ['pos' => 'keluar', 'pos_nama' => 'QA Keluar']);
+    $tiket = function (string $plat, int $mundurMenit = 0) use ($tm): array {
+        $d = api('masuk', $tm, ['_form' => ['plat' => $plat, 'jenis' => 'motor', 'paksa' => '1']])['data'];
+        if ($mundurMenit) q('UPDATE kendaraan_masuk SET waktu_masuk = ? WHERE id = ?', [jkt(time() - $mundurMenit * 60), $d['id']]);
+        return $d;
+    };
+
+    // ---------------------------------------------------------------- alur normal
+    $t = $tiket('QA 1 AA', 135);
+    $scan = api('keluar.scan', $tk, ['kode' => $t['kode_qr']]);
+    cek('N1. scan QR mengembalikan tarif & token hitung', ($scan['ok'] ?? false) && !empty($scan['data']['token_hitung']), 'Rp' . ($scan['data']['total'] ?? '?'));
+    $bayar = api('keluar.bayar', $tk, ['_form' => ['id' => $t['id'], 'metode' => 'cash', 'token_hitung' => $scan['data']['token_hitung']]]);
+    cek('N2. bayar dengan token: tarif sama dengan saat scan', ($bayar['ok'] ?? false) && $bayar['data']['total'] === $scan['data']['total'], 'Rp' . ($bayar['data']['total'] ?? '?'));
+    $ulang = api('keluar.scan', $tk, ['kode' => $t['kode_qr']]);
+    cek('N3. tiket yang sudah keluar ditolak saat discan ulang', !($ulang['ok'] ?? true) && ($ulang['kode'] ?? '') === 'sudah_keluar');
+
+    // ---------------------------------------------------------------- #3 waktu keluar dimundurkan
+    $t = $tiket('QA 3 AA', 135);
+    $b = api('keluar.bayar', $tk, ['_form' => ['id' => $t['id'], 'metode' => 'cash', 'waktu_keluar' => jkt(time() - 840)]]);
+    cek('#3a. waktu keluar dimundurkan 14 mnt TANPA token -> diabaikan', ($b['ok'] ?? false) && $b['data']['durasi_menit'] >= 134, ($b['data']['durasi_menit'] ?? '?') . ' mnt');
+    $t = $tiket('QA 3 BB', 135);
+    $s = api('keluar.scan', $tk, ['kode' => $t['kode_qr']]);
+    [$ts, $tt, $tanda] = explode('.', $s['data']['token_hitung']);
+    $palsu = ($ts - 840) . '.' . $tt . '.' . $tanda;
+    $b = api('keluar.bayar', $tk, ['_form' => ['id' => $t['id'], 'metode' => 'cash', 'token_hitung' => $palsu]]);
+    cek('#3b. token hitung diubah (waktu dimundurkan) -> ditolak, pakai waktu sekarang', ($b['ok'] ?? false) && $b['data']['durasi_menit'] >= 134, ($b['data']['durasi_menit'] ?? '?') . ' mnt');
+    $t2 = $tiket('QA 3 CC', 60);
+    $b = api('keluar.bayar', $tk, ['_form' => ['id' => $t2['id'], 'metode' => 'cash', 'token_hitung' => $s['data']['token_hitung']]]);
+    cek('#3c. token milik tiket lain tidak berlaku', ($b['ok'] ?? false) && $b['data']['durasi_menit'] >= 59);
+
+    // ---------------------------------------------------------------- #1 pembayaran offline palsu
+    $t = $tiket('QA 1 BB', 300);
+    $sync = api('sync', $tk, ['items' => [['uid' => 'k-qa1', 'tipe' => 'keluar', 'kode_qr' => $t['kode_qr'], 'metode' => 'cash', 'total' => 0, 'waktu_keluar' => now(), 'shift_id' => 0]]]);
+    $row = q_one('SELECT total_biaya, total_offline FROM transaksi_keluar WHERE kendaraan_masuk_id = ?', [$t['id']]);
+    cek('#1a. tiket online dikirim "offline" Rp0 -> tagihan tetap hitungan server', ($sync['ok'] ?? false) && $row && (int)$row['total_biaya'] > 0 && (int)$row['total_offline'] === 0, 'tagihan Rp' . ($row['total_biaya'] ?? '?') . ', HP Rp' . ($row['total_offline'] ?? '?'));
+    $shiftK = (int)q_val('SELECT id FROM shift WHERE petugas_id = 991 AND waktu_tutup IS NULL');
+    q('UPDATE transaksi_keluar SET shift_id = ? WHERE kendaraan_masuk_id = ?', [$shiftK, $t['id']]);
+    cek('#1b. setoran yang diharapkan shift ikut hitungan server', total_cash_shift($shiftK) >= (int)$row['total_biaya']);
+    cek('#1c. tercatat di log sebagai offline_berselisih', (bool)q_val("SELECT COUNT(*) FROM log_aktivitas WHERE aksi = 'offline_berselisih' AND referensi_id = ?", [$t['id']]));
+
+    // ---------------------------------------------------------------- #2 waktu masuk offline janggal
+    $uuid = uuid4(); $tsF = time() + 5 * 3600;
+    $kode = "PK1.$uuid.M." . base_convert((string)$tsF, 10, 36) . '.OFF0123456789abc';
+    $shiftM = (int)q_val('SELECT id FROM shift WHERE petugas_id = 990 AND waktu_tutup IS NULL');
+    api('sync', $tm, ['items' => [['uid' => 'm-qa2', 'tipe' => 'masuk', 'id' => $uuid, 'kode_qr' => $kode, 'plat' => 'QA 2 AA', 'jenis' => 'motor', 'waktu_masuk' => jkt($tsF), 'shift_id' => $shiftM]]]);
+    $km = q_one('SELECT waktu_masuk, catatan_sistem FROM kendaraan_masuk WHERE id = ?', [$uuid]);
+    cek('#2a. tiket offline berjam masa depan -> waktu masuk dikoreksi & ditandai', $km && strtotime($km['waktu_masuk']) <= time() + 5 && !empty($km['catatan_sistem']), $km['catatan_sistem'] ?? '');
+    $uuid2 = uuid4(); $tsL = time() - 3 * 86400;
+    $kode2 = "PK1.$uuid2.M." . base_convert((string)$tsL, 10, 36) . '.OFF0123456789abd';
+    api('sync', $tm, ['items' => [['uid' => 'm-qa3', 'tipe' => 'masuk', 'id' => $uuid2, 'kode_qr' => $kode2, 'plat' => 'QA 2 BB', 'jenis' => 'motor', 'waktu_masuk' => jkt($tsL), 'shift_id' => $shiftM]]]);
+    $km2 = q_one('SELECT waktu_masuk, catatan_sistem FROM kendaraan_masuk WHERE id = ?', [$uuid2]);
+    $bukaM = q_val('SELECT waktu_buka FROM shift WHERE id = ?', [$shiftM]);
+    cek('#2b. tiket offline sebelum shift dibuka -> dikoreksi ke waktu buka shift', $km2 && $km2['waktu_masuk'] === $bukaM && !empty($km2['catatan_sistem']));
+    $uuid3 = uuid4(); $tsN = time() - 120;
+    $kode3 = "PK1.$uuid3.M." . base_convert((string)$tsN, 10, 36) . '.OFF0123456789abe';
+    api('sync', $tm, ['items' => [['uid' => 'm-qa4', 'tipe' => 'masuk', 'id' => $uuid3, 'kode_qr' => $kode3, 'plat' => 'QA 2 CC', 'jenis' => 'motor', 'waktu_masuk' => jkt($tsN), 'shift_id' => $shiftM]]]);
+    $km3 = q_one('SELECT waktu_masuk, catatan_sistem FROM kendaraan_masuk WHERE id = ?', [$uuid3]);
+    cek('#2c. tiket offline normal tidak diubah', $km3 && $km3['waktu_masuk'] === jkt($tsN) && $km3['catatan_sistem'] === null);
+
+    // ---------------------------------------------------------------- #4 brute force login
+    for ($i = 0; $i < 5; $i++) $login('qa_kunci', 'salah' . $i);
+    $r = $login('qa_kunci');
+    cek('#4a. setelah 5 password salah, akun dikunci (password benar pun ditolak)', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'terkunci' && $r['_http'] === 429, $r['error'] ?? '');
+    $r2 = $login('qa_dua_hp');
+    cek('#4b. akun lain dari IP yang sama tetap bisa login', $r2['ok'] ?? false);
+    cek('#4c. aturan password: < 8 karakter & sama dengan username ditolak', cek_password_baru('pendek1') !== null && cek_password_baru('qa_masuk', 'qa_masuk') !== null && cek_password_baru('Panjang#2026') === null);
+
+    // ---------------------------------------------------------------- pembayaran ganda bersamaan
+    $t = $tiket('QA 5 AA', 60);
+    $mh = curl_multi_init(); $hs = [];
+    foreach ([1, 2] as $i) {
+        $h = curl_init("$BASE/api/index.php?r=keluar.bayar");
+        curl_setopt_array($h, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ["Authorization: Bearer $tk"], CURLOPT_POSTFIELDS => ['id' => $t['id'], 'metode' => 'cash']]);
+        curl_multi_add_handle($mh, $h); $hs[] = $h;
+    }
+    do { curl_multi_exec($mh, $jalan); curl_multi_select($mh); } while ($jalan);
+    $okN = 0; foreach ($hs as $h) { $okN += (json_decode(curl_multi_getcontent($h), true)['ok'] ?? false) ? 1 : 0; curl_multi_remove_handle($mh, $h); }
+    cek('N4. dua pembayaran bersamaan untuk tiket yang sama -> hanya 1 tercatat', $okN === 1 && (int)q_val('SELECT COUNT(*) FROM transaksi_keluar WHERE kendaraan_masuk_id = ?', [$t['id']]) === 1);
+
+    // ---------------------------------------------------------------- QR palsu
+    $palsu = preg_replace('/\.[0-9a-f]{16}$/', '.0000000000000000', $tiket('QA 6 AA')['kode_qr']);
+    $r = api('keluar.scan', $tk, ['kode' => $palsu]);
+    cek('N5. QR dengan tanda tangan palsu ditolak', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'qr_invalid');
+
+    // ---------------------------------------------------------------- tutup shift
+    $tutupM = api('shift.tutup', $tm, ['catatan' => 'uji']);
+    cek('N6. tutup shift pos masuk tanpa setoran', ($tutupM['ok'] ?? false) && $tutupM['data']['shift']['total_cash_setor'] === null);
+    $tutupK = api('shift.tutup', $tk, []);
+    cek('N7. tutup shift pos keluar tanpa setoran ditolak', !($tutupK['ok'] ?? true) && ($tutupK['kode'] ?? '') === 'setor');
+} finally {
+    bersihkan();
+}
+
+echo $gagal ? "\n$gagal kasus gagal\n" : "\nSemua kasus lulus\n";
+exit($gagal ? 1 : 0);

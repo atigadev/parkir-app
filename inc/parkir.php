@@ -17,6 +17,15 @@ class ParkirException extends RuntimeException
     }
 }
 
+/** Kolom yang ditambahkan migrasi tersedia? (di-cache per permintaan; aman bila migrasi gagal dijalankan) */
+function kolom_tersedia(string $tabel, string $kolom): bool
+{
+    static $cache = [];
+    $k = "$tabel.$kolom";
+    if (!isset($cache[$k])) $cache[$k] = kolom_ada($tabel, $kolom);
+    return $cache[$k];
+}
+
 function shift_aktif(int $petugasId): ?array
 {
     return q_one('SELECT * FROM shift WHERE petugas_id = ? AND waktu_tutup IS NULL ORDER BY id DESC LIMIT 1', [$petugasId]);
@@ -49,7 +58,6 @@ function catat_masuk(array $d, int $petugasId, ?int $shiftId): array
     if ($offline) {
         $id = (string)$d['id'];
         $kode = (string)$d['kode_qr'];
-        $waktu = date('Y-m-d H:i:s', strtotime((string)$d['waktu_masuk']));
         $urai = qr_urai($kode);
         if (!is_uuid($id) || !$urai || $urai['id'] !== $id) {
             throw new ParkirException('Data tiket offline tidak valid.', 'qr_invalid');
@@ -58,10 +66,20 @@ function catat_masuk(array $d, int $petugasId, ?int $shiftId): array
         if (q_val('SELECT 1 FROM kendaraan_masuk WHERE id = ?', [$id])) {
             return masuk_by_id($id); // sudah tersinkron sebelumnya (idempoten)
         }
+        // Jam dari HP tidak dipercaya begitu saja: waktu masuk di masa depan / sebelum shift dibuka
+        // membuat tarif keluar Rp0. Dikoreksi (bukan ditolak, agar tiket tidak hilang) & diberi tanda.
+        $ts = strtotime((string)($d['waktu_masuk'] ?? '')) ?: time();
+        $koreksi = [];
+        if ($ts > time() + 120) { $koreksi[] = 'jam HP di masa depan (' . date('d/m H:i', $ts) . ')'; $ts = time(); }
+        $buka = $shiftId ? strtotime((string)q_val('SELECT waktu_buka FROM shift WHERE id = ?', [$shiftId])) : 0;
+        if ($buka && $ts < $buka - 300) { $koreksi[] = 'sebelum shift dibuka (' . date('d/m H:i', $ts) . ')'; $ts = $buka; }
+        $waktu = date('Y-m-d H:i:s', $ts);
+        $catatanSistem = $koreksi ? 'Waktu masuk offline dikoreksi: ' . implode(', ', $koreksi) : null;
     } else {
         $id = uuid4();
         $waktu = now();
         $kode = qr_buat($id, $jenis, $waktu);
+        $catatanSistem = null;
     }
 
     q('INSERT INTO kendaraan_masuk (id, kode_qr, plat_nomor, plat_hasil_ocr, plat_dikoreksi, jenis_kendaraan, foto_masuk_url,
@@ -70,6 +88,10 @@ function catat_masuk(array $d, int $petugasId, ?int $shiftId): array
         $waktu, mb_substr((string)($d['pos_masuk'] ?? 'Pos Masuk'), 0, 50), $petugasId, $shiftId, 'parkir', $offline ? 1 : 0,
     ]);
 
+    if ($catatanSistem !== null) {
+        if (kolom_tersedia('kendaraan_masuk', 'catatan_sistem')) q('UPDATE kendaraan_masuk SET catatan_sistem = ? WHERE id = ?', [$catatanSistem, $id]);
+        log_aktivitas($petugasId, 'koreksi_waktu_offline', $id, ['waktu_hp' => (string)($d['waktu_masuk'] ?? '')], ['waktu_masuk' => $waktu, 'alasan' => $catatanSistem]);
+    }
     if ($ocr !== null && $ocr !== $plat) {
         log_aktivitas($petugasId, 'koreksi_plat', $id, ['plat_ocr' => $ocr], ['plat' => $plat]);
     }
@@ -124,9 +146,10 @@ function catat_keluar(array $d, int $petugasId, ?int $shiftId): array
     $waktuKeluar = $d['waktu_keluar'] ?? now();
     $ts = strtotime((string)$waktuKeluar);
     if (!$ts) $ts = time();
-    // Waktu dari klien hanya diterima bila wajar (tidak di masa depan; online maks 15 menit lalu).
+    // Waktu dari klien hanya diterima bila wajar. Online: API sudah memverifikasinya lewat token hitung
+    // (token_hitung_waktu); di sini dijaga lagi agar tidak lebih lama dari masa berlaku token.
     if ($ts > time() + 60) $ts = time();
-    if (!$offline && $ts < time() - 900) $ts = time();
+    if (!$offline && $ts < time() - TOKEN_HITUNG_DETIK) $ts = time();
     $waktuKeluar = date('Y-m-d H:i:s', $ts);
 
     $pdo = db();
@@ -150,13 +173,15 @@ function catat_keluar(array $d, int $petugasId, ?int $shiftId): array
         if ($waktuKeluar < $km['waktu_masuk']) $waktuKeluar = $km['waktu_masuk'];
 
         $r = hitung_untuk($km, $waktuKeluar, $tanpaTiket);
+        // Tagihan SELALU menurut hitungan server. Nominal yang dicatat HP saat offline disimpan terpisah
+        // (total_offline) bila berbeda: setoran shift diharapkan = hitungan server, sehingga nominal HP yang
+        // lebih kecil (mis. dimanipulasi menjadi Rp0) langsung terlihat sebagai kekurangan setoran.
         $total = $r['total'];
-        if ($offline && isset($d['total_offline']) && (int)$d['total_offline'] !== $total) {
-            // Uang yang benar-benar diterima petugas saat offline yang dicatat; selisih disimpan untuk audit.
-            $r['total_server'] = $total;
-            $total = (int)$d['total_offline'];
-            $r['total'] = $total;
-            $catatan = trim($catatan . ' [offline: hitungan server ' . $r['total_server'] . ']');
+        $totalOffline = null;
+        if ($offline && isset($d['total_offline']) && is_numeric($d['total_offline']) && (int)$d['total_offline'] !== $total) {
+            $totalOffline = max(0, (int)$d['total_offline']);
+            $r['total_offline'] = $totalOffline;
+            $catatan = trim($catatan . ' [offline: HP mencatat ' . rupiah($totalOffline) . ', tagihan server ' . rupiah($total) . ']');
         }
 
         q('INSERT INTO transaksi_keluar (kendaraan_masuk_id, waktu_keluar, durasi_menit, rincian_biaya, total_biaya, metode_bayar,
@@ -165,6 +190,9 @@ function catat_keluar(array $d, int $petugasId, ?int $shiftId): array
             $d['foto'] ?? null, $petugasId, $shiftId, $tanpaTiket ? 1 : 0, $r['denda'], $catatan !== '' ? mb_substr($catatan, 0, 255) : null, $offline ? 1 : 0,
         ]);
         $tkId = (int)$pdo->lastInsertId();
+        if ($totalOffline !== null && kolom_tersedia('transaksi_keluar', 'total_offline')) {
+            q('UPDATE transaksi_keluar SET total_offline = ? WHERE id = ?', [$totalOffline, $tkId]);
+        }
         q("UPDATE kendaraan_masuk SET status = 'keluar' WHERE id = ?", [$km['id']]);
         $pdo->commit();
     } catch (Throwable $ex) {
@@ -174,6 +202,9 @@ function catat_keluar(array $d, int $petugasId, ?int $shiftId): array
 
     if ($tanpaTiket) {
         log_aktivitas($petugasId, 'keluar_tanpa_tiket', $km['id'], null, ['plat' => $km['plat_nomor'], 'denda' => $r['denda'], 'catatan' => $catatan]);
+    }
+    if ($totalOffline !== null) {
+        log_aktivitas($petugasId, 'offline_berselisih', $km['id'], ['total_hp' => $totalOffline], ['tagihan_server' => $total, 'plat' => $km['plat_nomor']]);
     }
     return transaksi_keluar_lengkap($tkId);
 }

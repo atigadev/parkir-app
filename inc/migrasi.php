@@ -13,7 +13,7 @@
  */
 declare(strict_types=1);
 
-const SKEMA_VERSI = 2;
+const SKEMA_VERSI = 3;
 
 function kolom_ada(string $tabel, string $kolom): bool
 {
@@ -85,6 +85,14 @@ function langkah_migrasi(): array
             $ubah = [];
             if (tambah_kolom('petugas', 'app_versi', 'VARCHAR(20) NULL AFTER last_login')) $ubah[] = 'petugas.app_versi';
             if (tambah_kolom('petugas', 'app_versi_at', 'DATETIME NULL AFTER app_versi')) $ubah[] = 'petugas.app_versi_at';
+            return $ubah;
+        },
+        // v3: audit transaksi offline (nominal dari HP vs hitungan server) & koreksi waktu tiket offline
+        3 => function (): array {
+            $ubah = [];
+            if (tambah_kolom('transaksi_keluar', 'total_offline', 'INT NULL AFTER total_biaya')) $ubah[] = 'transaksi_keluar.total_offline';
+            if (tambah_kolom('kendaraan_masuk', 'catatan_sistem', 'VARCHAR(255) NULL AFTER offline')) $ubah[] = 'kendaraan_masuk.catatan_sistem';
+            if (tambah_indeks('log_aktivitas', 'idx_aksi_ref_waktu', 'INDEX idx_aksi_ref_waktu (aksi, referensi_id, waktu)')) $ubah[] = 'indeks log login';
             return $ubah;
         },
     ];

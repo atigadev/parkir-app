@@ -28,6 +28,10 @@ function wajib_admin(): void
         header('Location: ' . base_url('admin/login.php'));
         exit;
     }
+    if (!empty($_SESSION['wajib_ganti_password']) && basename($_SERVER['SCRIPT_NAME']) !== 'akun.php') {
+        header('Location: ' . base_url('admin/akun.php'));
+        exit;
+    }
 }
 
 function csrf_token(): string
@@ -182,7 +186,7 @@ function layout_atas(string $judul, string $aktif = ''): void
     </nav>
     <div class="side-foot">
       <a href="<?= e(base_url('pwa/')) ?>" target="_blank"><?= ikon('phone') ?><span>Aplikasi Petugas</span></a>
-      <div class="me"><span class="avatar"><?= e(mb_strtoupper(mb_substr($a['nama'], 0, 1))) ?></span><div><b><?= e($a['nama']) ?></b><small>Admin</small></div>
+      <div class="me"><span class="avatar"><?= e(mb_strtoupper(mb_substr($a['nama'], 0, 1))) ?></span><div><b><?= e($a['nama']) ?></b><small><a href="<?= e(base_url('admin/akun.php')) ?>" style="color:inherit">Akun saya · ganti password</a></small></div>
         <form method="post" action="<?= e(base_url('admin/logout.php')) ?>"><?= csrf_field() ?><button class="icon-btn" title="Keluar"><?= ikon('logout') ?></button></form></div>
     </div>
   </aside>

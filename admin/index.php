@@ -31,12 +31,21 @@ $maxJam = max(1, max($perJam));
 
 $kolVersi = kolom_ada('petugas', 'app_versi') ? ', p.app_versi, p.app_versi_at' : '';
 $shiftBuka = q_all("SELECT s.*, p.nama$kolVersi FROM shift s JOIN petugas p ON p.id = s.petugas_id WHERE s.waktu_tutup IS NULL ORDER BY s.waktu_buka");
+// Indikasi kebocoran pendapatan: transaksi offline yang nominal HP-nya beda dari tagihan server, dan tiket offline berjam janggal
+$offlineSelisih = kolom_tersedia('transaksi_keluar', 'total_offline') ? q_one("SELECT COUNT(*) n, COALESCE(SUM(tk.total_biaya - tk.total_offline), 0) kurang FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.status <> 'void' AND tk.total_offline IS NOT NULL AND tk.waktu_keluar >= CURDATE() - INTERVAL 6 DAY") : ['n' => 0, 'kurang' => 0];
+$waktuDikoreksi = kolom_tersedia('kendaraan_masuk', 'catatan_sistem') ? (int)q_val("SELECT COUNT(*) FROM kendaraan_masuk WHERE catatan_sistem IS NOT NULL AND waktu_masuk >= CURDATE() - INTERVAL 6 DAY") : 0;
 $voidMinta = (int)q_val("SELECT COUNT(*) FROM kendaraan_masuk WHERE void_diminta_at IS NOT NULL AND status <> 'void' AND void_oleh IS NULL");
 $qrisBelum = (int)q_val("SELECT COUNT(*) FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.status <> 'void' AND tk.metode_bayar = 'qris' AND tk.qris_terverifikasi = 0 AND tk.total_biaya > 0");
 $selisihHari = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih),0) total FROM shift WHERE pos = 'keluar' AND waktu_tutup >= ? AND selisih <> 0", [$hari]);
 
 layout_atas('Dashboard', 'index.php');
 ?>
+<?php if ($offlineSelisih['n'] || $waktuDikoreksi): ?>
+<div class="alert err">
+  <?php if ($offlineSelisih['n']): ?><a href="transaksi.php?status=offline_selisih&dari=<?= date('Y-m-d', strtotime('-6 days')) ?>"><?= (int)$offlineSelisih['n'] ?> transaksi offline</a> (7 hari) nominal di HP berbeda dari tagihan server<?= $offlineSelisih['kurang'] > 0 ? ' — total kurang ' . rupiah($offlineSelisih['kurang']) : '' ?>. <?php endif; ?>
+  <?php if ($waktuDikoreksi): ?><a href="transaksi.php?status=waktu_dikoreksi&dari=<?= date('Y-m-d', strtotime('-6 days')) ?>"><?= $waktuDikoreksi ?> tiket offline</a> berjam janggal dan telah dikoreksi sistem.<?php endif; ?>
+</div>
+<?php endif; ?>
 <?php if ($voidMinta || $qrisBelum): ?>
 <div class="alert warn">
   <?php if ($voidMinta): ?><a href="transaksi.php?void=minta"><?= $voidMinta ?> permintaan void</a> menunggu persetujuan. <?php endif; ?>

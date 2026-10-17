@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS kendaraan_masuk (
   shift_id            INT UNSIGNED NULL,
   status              ENUM('parkir','keluar','void') NOT NULL DEFAULT 'parkir',
   offline             TINYINT(1) NOT NULL DEFAULT 0,
+  catatan_sistem      VARCHAR(255) NULL,
   void_alasan         VARCHAR(255) NULL,
   void_diminta_oleh   INT UNSIGNED NULL,
   void_diminta_at     DATETIME NULL,
@@ -85,7 +86,8 @@ CREATE TABLE IF NOT EXISTS transaksi_keluar (
   waktu_keluar        DATETIME NOT NULL,
   durasi_menit        INT NOT NULL,
   rincian_biaya       TEXT NOT NULL,               -- JSON
-  total_biaya         INT NOT NULL,
+  total_biaya         INT NOT NULL,                -- tagihan menurut hitungan server
+  total_offline       INT NULL,                    -- nominal dicatat HP saat offline bila berbeda
   metode_bayar        ENUM('cash','qris') NOT NULL,
   foto_keluar_url     VARCHAR(255) NULL,
   petugas_id          INT UNSIGNED NOT NULL,
@@ -125,7 +127,8 @@ CREATE TABLE IF NOT EXISTS log_aktivitas (
   waktu          DATETIME NOT NULL,
   ip             VARCHAR(45) NULL,
   KEY idx_waktu (waktu),
-  KEY idx_aksi (aksi)
+  KEY idx_aksi (aksi),
+  KEY idx_aksi_ref_waktu (aksi, referensi_id, waktu)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS pengaturan (
@@ -157,4 +160,4 @@ INSERT IGNORE INTO pengaturan (kunci, nilai) VALUES
  ('footer_resi',     'Simpan tiket ini dengan baik\nJangan tinggalkan tiket & barang berharga di kendaraan\nKehilangan/kerusakan barang bukan tanggung jawab pengelola'),
  ('footer_struk',    'Terima kasih atas kunjungan Anda'),
  ('telepon_lokasi',  ''),
- ('skema_versi',     '2');
+ ('skema_versi',     '3');

@@ -16,8 +16,8 @@ if (is_post()) {
             flash('Nama wajib diisi; username 3–50 karakter huruf kecil, angka, titik, atau garis bawah.', 'err');
         } elseif (q_val('SELECT 1 FROM petugas WHERE username = ? AND id <> ?', [$user, $id])) {
             flash("Username $user sudah dipakai.", 'err');
-        } elseif (!$id && strlen($pass) < 6) {
-            flash('Password minimal 6 karakter.', 'err');
+        } elseif (!$id && ($galat = cek_password_baru($pass, $user))) {
+            flash($galat, 'err');
         } elseif ($id === admin_id() && $role !== 'admin') {
             flash('Anda tidak dapat menurunkan role akun sendiri.', 'err');
         } else {
@@ -35,8 +35,9 @@ if (is_post()) {
         }
     } elseif ($aksi === 'reset' && $id) {
         $pass = (string)($_POST['password'] ?? '');
-        if (strlen($pass) < 6) {
-            flash('Password minimal 6 karakter.', 'err');
+        $uname = (string)q_val('SELECT username FROM petugas WHERE id = ?', [$id]);
+        if ($galat = cek_password_baru($pass, $uname)) {
+            flash($galat, 'err');
         } else {
             q('UPDATE petugas SET password_hash = ?, api_token_hash = NULL, token_expires = NULL WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
             log_aktivitas(admin_id(), 'reset_password', $id);
@@ -63,7 +64,7 @@ layout_atas('Petugas', 'petugas.php');
       <label class="f">Nama lengkap<input name="nama" required value="<?= e($edit['nama'] ?? '') ?>"></label>
       <label class="f">Username<input name="username" required pattern="[a-z0-9._]{3,50}" value="<?= e($edit['username'] ?? '') ?>" autocomplete="off"></label>
       <label class="f">Role<select name="role"><option value="petugas">Petugas pos</option><option value="admin" <?= ($edit['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin</option></select></label>
-      <?php if (!$edit): ?><label class="f">Password awal<input name="password" type="password" minlength="6" required autocomplete="new-password"></label><?php endif; ?>
+      <?php if (!$edit): ?><label class="f">Password awal<input name="password" type="password" minlength="8" required autocomplete="new-password"></label><?php endif; ?>
       <div class="form-foot"><button class="btn">Simpan</button><?php if ($edit): ?><a class="btn ghost" href="petugas.php">Batal</a><?php endif; ?></div>
     </div>
     <?php if ($edit): ?>
@@ -71,7 +72,7 @@ layout_atas('Petugas', 'petugas.php');
     <form class="card" method="post" style="margin-top:-1px">
       <div class="card-b" style="display:grid;gap:12px">
         <?= csrf_field() ?><input type="hidden" name="aksi" value="reset"><input type="hidden" name="id" value="<?= (int)$edit['id'] ?>">
-        <label class="f">Reset password<input name="password" type="password" minlength="6" required autocomplete="new-password" placeholder="Password baru"></label>
+        <label class="f">Reset password<input name="password" type="password" minlength="8" required autocomplete="new-password" placeholder="Password baru"></label>
         <div><button class="btn ghost">Reset password</button></div>
       </div>
     <?php endif; ?>

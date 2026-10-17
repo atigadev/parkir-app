@@ -50,11 +50,15 @@ function siapkan_db_lama(PDO $root): void
     $pdo = db();
     $pdo->exec('ALTER TABLE shift DROP COLUMN pos_nama');
     $pdo->exec('ALTER TABLE petugas DROP COLUMN app_versi, DROP COLUMN app_versi_at');
+    $pdo->exec('ALTER TABLE transaksi_keluar DROP COLUMN total_offline');
+    $pdo->exec('ALTER TABLE kendaraan_masuk DROP COLUMN catatan_sistem');
+    $pdo->exec('ALTER TABLE log_aktivitas DROP INDEX idx_aksi_ref_waktu');
     $pdo->exec("DELETE FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi','skema_versi')");
 }
 function struktur_lengkap(): bool
 {
     return kolom_ada('shift', 'pos_nama') && kolom_ada('petugas', 'app_versi') && kolom_ada('petugas', 'app_versi_at')
+        && kolom_ada('transaksi_keluar', 'total_offline') && kolom_ada('kendaraan_masuk', 'catatan_sistem') && indeks_ada('log_aktivitas', 'idx_aksi_ref_waktu')
         && q_val("SELECT COUNT(*) FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi')") == 3;
 }
 
@@ -99,7 +103,7 @@ try {
     [$k1, $o1] = mysql_file(APP_ROOT . '/database/migrasi.sql');
     [$k2, $o2] = mysql_file(APP_ROOT . '/database/migrasi.sql');
     cek('6a. migrasi.sql dijalankan 2x tanpa error', $k1 === 0 && $k2 === 0, $k1 || $k2 ? trim($o1 . ' ' . $o2) : 'versi skema ' . skema_versi_db());
-    cek('6b. hasil migrasi.sql = hasil migrasi PHP', struktur_lengkap() && skema_versi_db() === SKEMA_VERSI && !jalankan_migrasi(true)['perubahan']);
+    cek("6b. hasil migrasi.sql = hasil migrasi PHP", struktur_lengkap() && skema_versi_db() === SKEMA_VERSI && !jalankan_migrasi(true)['perubahan']);
     q("UPDATE pengaturan SET nilai = '9' WHERE kunci = 'skema_versi'");
     mysql_file(APP_ROOT . '/database/migrasi.sql');
     cek('6c. migrasi.sql tidak menurunkan versi skema yang lebih tinggi', skema_versi_db() === 9);

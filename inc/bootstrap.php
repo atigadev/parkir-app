@@ -19,6 +19,7 @@ require_once __DIR__ . '/qrtoken.php';
 require_once __DIR__ . '/parkir.php';
 require_once __DIR__ . '/ocr.php';
 require_once __DIR__ . '/migrasi.php';
+require_once __DIR__ . '/keamanan.php';
 
 function config(string $key, $default = null)
 {

@@ -172,9 +172,13 @@ try {
     case 'auth.login':
         wajib_metode('POST');
         $in = input();
-        $p = q_one('SELECT * FROM petugas WHERE username = ?', [trim((string)($in['username'] ?? ''))]);
+        $username = trim((string)($in['username'] ?? ''));
+        if ($kunci = login_terkunci($username, client_ip())) {
+            gagal(pesan_terkunci($kunci), 'terkunci', 429);
+        }
+        $p = q_one('SELECT * FROM petugas WHERE username = ?', [$username]);
         if (!$p || !password_verify((string)($in['password'] ?? ''), $p['password_hash'])) {
-            log_aktivitas($p ? (int)$p['id'] : null, 'login_gagal', null, null, ['username' => $in['username'] ?? '', 'via' => 'app']);
+            catat_login(false, $p ? (int)$p['id'] : null, $username, 'app');
             usleep(400000);
             gagal('Username atau password salah.', 'login', 401);
         }
@@ -183,7 +187,7 @@ try {
         q('UPDATE petugas SET api_token_hash = ?, token_expires = ?, last_login = ? WHERE id = ?', [
             hash('sha256', $token), date('Y-m-d H:i:s', time() + 86400 * (int)config('token_days', 7)), now(), $p['id'],
         ]);
-        log_aktivitas((int)$p['id'], 'login', null, null, ['via' => 'app', 'versi' => $_SERVER['HTTP_X_APP_VERSI'] ?? null]);
+        catat_login(true, (int)$p['id'], $username, 'app', ['versi' => $_SERVER['HTTP_X_APP_VERSI'] ?? null]);
         catat_versi_app((int)$p['id']);
         $shift = shift_aktif((int)$p['id']);
         ok([
@@ -321,6 +325,7 @@ try {
         if ($km['status'] === 'void') gagal('Tiket ini sudah dibatalkan (void).', 'void', 409);
         $waktu = now();
         $rin = hitung_untuk($km, $waktu, $tanpaTiket);
+        $tokenHitung = token_hitung_buat($km['id'], $waktu, $tanpaTiket);
         ok([
             'tiket'         => data_tiket($km),
             'waktu_keluar'  => $waktu,
@@ -328,6 +333,7 @@ try {
             'rincian'       => $rin,
             'rincian_baris' => rincian_baris($rin),
             'total'         => $rin['total'],
+            'token_hitung'  => $tokenHitung, // wajib dikirim saat bayar; menentukan waktu keluar
         ]);
 
     case 'keluar.cari':
@@ -345,9 +351,13 @@ try {
         $s = wajib_shift($p, 'keluar');
         $in = input();
         $foto = !empty($_FILES['foto']) ? simpan_foto($_FILES['foto'], 'out_' . bin2hex(random_bytes(8))) : null;
+        $tanpaTiket = !empty($in['tanpa_tiket']);
+        // Waktu keluar hanya dari token hitung yang sah (diterbitkan server saat scan, berlaku 5 menit).
+        // Tanpa token sah (aplikasi lama / token kedaluwarsa / dimanipulasi) dipakai waktu sekarang.
+        $waktuKeluar = token_hitung_waktu(isset($in['token_hitung']) ? (string)$in['token_hitung'] : null, (string)($in['id'] ?? ''), $tanpaTiket) ?? now();
         $tk = catat_keluar([
-            'kendaraan_masuk_id' => $in['id'] ?? '', 'metode' => $in['metode'] ?? 'cash', 'waktu_keluar' => $in['waktu_keluar'] ?? null,
-            'tanpa_tiket' => !empty($in['tanpa_tiket']), 'catatan' => $in['catatan'] ?? '', 'foto' => $foto,
+            'kendaraan_masuk_id' => $in['id'] ?? '', 'metode' => $in['metode'] ?? 'cash', 'waktu_keluar' => $waktuKeluar,
+            'tanpa_tiket' => $tanpaTiket, 'catatan' => $in['catatan'] ?? '', 'foto' => $foto,
         ], $p['id'], $s['id']);
         ok(data_resi_keluar($tk));
 

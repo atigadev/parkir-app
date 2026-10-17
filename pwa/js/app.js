@@ -790,6 +790,7 @@
       if (offline) return simpanKeluarOffline(d, metode, foto, catatan);
       var fd = new FormData();
       fd.append('id', d.tiket.id); fd.append('metode', metode); fd.append('waktu_keluar', d.waktu_keluar);
+      if (d.token_hitung) fd.append('token_hitung', d.token_hitung); // server memakai waktu dari token ini
       if (d.tanpa_tiket) { fd.append('tanpa_tiket', '1'); fd.append('catatan', catatan); }
       if (foto && foto.blob) fd.append('foto', foto.blob, 'keluar.jpg');
       return api('keluar.bayar', { body: fd, timeout: 12000 }).then(function (r) { r.offline = false; return r; }, function (e) {

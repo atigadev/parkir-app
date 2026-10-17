@@ -47,12 +47,16 @@ if (!empty($_GET['id'])) {
             <dt>Hasil OCR</dt><dd><?= $km['plat_hasil_ocr'] ? '<span class="plat">' . e($km['plat_hasil_ocr']) . '</span>' . ($km['plat_dikoreksi'] ? ' ' . badge('dikoreksi petugas', 'warn') : ' ' . badge('tepat', 'ok')) : '<span class="muted">Input manual</span>' ?></dd>
             <dt>Kode QR</dt><dd class="mono" style="word-break:break-all"><?= e($km['kode_qr']) ?></dd>
             <dt>ID</dt><dd class="mono"><?= e($km['id']) ?><?= $km['offline'] ? ' ' . badge('dibuat offline', 'warn') : '' ?></dd>
+            <?php if (!empty($km['catatan_sistem'])): ?><dt>Peringatan sistem</dt><dd><?= badge('waktu dikoreksi', 'danger') ?> <?= e($km['catatan_sistem']) ?></dd><?php endif; ?>
             <?php if ($tk): ?>
             <dt>Keluar</dt><dd><?= tgl($tk['waktu_keluar'], 'd/m/Y H:i:s') ?> · <?= e($tk['petugas_nama']) ?></dd>
             <dt>Durasi</dt><dd><?= e(durasi_teks((int)$tk['durasi_menit'])) ?></dd>
             <dt>Pembayaran</dt><dd><b><?= rupiah($tk['total_biaya']) ?></b> · <?= strtoupper(e($tk['metode_bayar'])) ?>
               <?= $tk['metode_bayar'] === 'qris' ? ($tk['qris_terverifikasi'] ? badge('terverifikasi', 'ok') : badge('belum direkonsiliasi', 'warn')) : '' ?>
               <?= $tk['tanpa_tiket'] ? badge('tanpa tiket', 'danger') : '' ?><?= $tk['offline'] ? badge('offline', 'warn') : '' ?></dd>
+            <?php if (isset($tk['total_offline']) && $tk['total_offline'] !== null): ?>
+            <dt>Offline berselisih</dt><dd><?= badge('perlu dicek', 'danger') ?> HP mencatat <b><?= rupiah($tk['total_offline']) ?></b>, tagihan server <b><?= rupiah($tk['total_biaya']) ?></b>. Setoran shift diharapkan sesuai tagihan server.</dd>
+            <?php endif; ?>
             <?php if ($tk['catatan']): ?><dt>Catatan</dt><dd><?= e($tk['catatan']) ?></dd><?php endif; ?>
             <?php endif; ?>
             <?php if ($km['status'] === 'void'): ?>
@@ -129,6 +133,8 @@ if ($voidFilter === 'minta') {
 if ($plat !== '') { $where[] = "REPLACE(km.plat_nomor,' ','') LIKE ?"; $par[] = '%' . str_replace(' ', '', normalisasi_plat($plat)) . '%'; }
 if (in_array($status, ['parkir', 'keluar', 'void'], true)) { $where[] = 'km.status = ?'; $par[] = $status; }
 if ($status === 'tanpa_tiket') { $where[] = 'tk.tanpa_tiket = 1'; }
+if ($status === 'offline_selisih' && kolom_tersedia('transaksi_keluar', 'total_offline')) { $where[] = 'tk.total_offline IS NOT NULL'; }
+if ($status === 'waktu_dikoreksi' && kolom_tersedia('kendaraan_masuk', 'catatan_sistem')) { $where[] = 'km.catatan_sistem IS NOT NULL'; }
 
 $w = implode(' AND ', $where);
 $hal = max(1, (int)($_GET['hal'] ?? 1));
@@ -148,7 +154,7 @@ layout_atas('Transaksi & Void', 'transaksi.php');
       <label class="f">Plat<input name="plat" value="<?= e($plat) ?>" placeholder="B 1234"></label>
       <label class="f">Status<select name="status">
         <option value="">Semua</option>
-        <?php foreach (['parkir' => 'Parkir', 'keluar' => 'Keluar', 'void' => 'Void', 'tanpa_tiket' => 'Keluar tanpa tiket'] as $v => $l): ?>
+        <?php foreach (['parkir' => 'Parkir', 'keluar' => 'Keluar', 'void' => 'Void', 'tanpa_tiket' => 'Keluar tanpa tiket', 'offline_selisih' => 'Offline berselisih', 'waktu_dikoreksi' => 'Waktu offline dikoreksi'] as $v => $l): ?>
           <option value="<?= $v ?>" <?= $status === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select></label>
