@@ -1,8 +1,35 @@
+# --- Rahasia & konfigurasi server (JANGAN di-commit) ---
 config.php
+.env
+.env.*
+
+# --- Data operasional (foto kendaraan, QRIS, backup) ---
 uploads/foto/*
 !uploads/foto/.htaccess
 uploads/qris/*
 !uploads/qris/.htaccess
 backup/*
 !backup/.htaccess
+
+# --- Arsip, dump database & log (bisa memuat config/data pribadi) ---
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.tgz
+*.sql
+!database/schema.sql
+*.bak
+*.log
+
+# --- File hasil uji ---
 tests/tarif_cases.js
+
+# --- Editor & OS ---
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

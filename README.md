@@ -12,7 +12,12 @@ PHP native (tanpa framework) + MySQL/MariaDB, berjalan di XAMPP.
 ## Instalasi
 
 1. Salin folder ke `C:\xampp\htdocs\parkit-app`, jalankan Apache + MySQL.
-2. Buat database: `C:\xampp\mysql\bin\mysql.exe -u root < database\schema.sql`
+2. Buat database lalu impor skema:
+   ```
+   C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE parkit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+   C:\xampp\mysql\bin\mysql.exe -u root parkit < database\schema.sql
+   ```
+   Di cPanel: buat database lewat **MySQL Databases**, lalu impor `schema.sql` di phpMyAdmin.
 3. `copy config.sample.php config.php`, lalu isi `qr_secret` dengan string acak:
    `php -r "echo bin2hex(random_bytes(32));"`
    **Jangan ubah `qr_secret` setelah sistem berjalan** — tiket yang sudah tercetak menjadi tidak valid.
@@ -83,7 +88,8 @@ Rincian lengkap beserta salinan tarif disimpan di `transaksi_keluar.rincian_biay
 - QR berisi token HMAC (`PK1.<uuid>.<jenis>.<waktu>.<tanda>`), bukan plat; server mencocokkan persis dengan database. Tiket hanya bisa dipakai keluar sekali.
 - Tidak ada penghapusan transaksi. Petugas hanya bisa *meminta* void; admin menyetujui dengan alasan wajib. Semua koreksi plat, void, perubahan tarif/pengaturan/petugas, login, dan keluar tanpa tiket tercatat di **Log Aktivitas**.
 - Rekap cash per shift dihitung sistem; selisih setoran tampil di dashboard dan laporan.
-- `inc/`, `database/`, `cli/`, `tests/`, `backup/`, dan `config.php` diblokir dari web lewat `.htaccess`; folder `uploads/` tidak bisa mengeksekusi skrip.
+- `inc/`, `database/`, `cli/`, `tests/`, `backup/`, `config.php`, folder tersembunyi (`.git`, `.env`), serta arsip/dump/log (`*.zip`, `*.sql`, `*.bak`, `*.log`, …) diblokir dari web lewat `.htaccess`; folder `uploads/` tidak bisa mengeksekusi skrip.
+- Jangan menaruh arsip deploy (mis. `.zip` berisi `config.php`) di folder situs. Arsip dan `config.php` juga diabaikan Git (`.gitignore`).
 - Batasi API ke LAN: di `config.php` isi `'api_allow_prefix' => ['127.0.0.1', '::1', '192.168.']`.
 - XAMPP: beri password root MySQL (lalu sesuaikan `config.php` dan `cli/backup.bat`), batasi phpMyAdmin ke localhost.
 

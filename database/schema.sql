@@ -1,8 +1,8 @@
 -- ParkIt — skema database (MySQL / MariaDB)
--- Jalankan: mysql -u root < database/schema.sql
-
-CREATE DATABASE IF NOT EXISTS parkit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE parkit;
+-- Buat database lebih dulu, lalu impor file ini ke database tersebut:
+--   Lokal  : mysql -u root -e "CREATE DATABASE parkit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+--            mysql -u root parkit < database/schema.sql
+--   cPanel : buat database di "MySQL Databases", lalu phpMyAdmin → pilih database → Import
 
 CREATE TABLE IF NOT EXISTS petugas (
   id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

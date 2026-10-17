@@ -18,5 +18,7 @@ return [
     // Ukuran maksimal foto upload (byte)
     'max_foto'  => 2 * 1024 * 1024,
     // Batasi API hanya dari jaringan lokal (prefix IP). Kosongkan untuk mengizinkan semua.
-    'api_allow_prefix' => [],   // contoh: ['127.0.0.1', '::1', '192.168.']
+    'api_allow_prefix' => [],   // contoh: ['127.0.0.1', '::1', '192.168.'] — biarkan [] di hosting/cPanel
+    // Path URL aplikasi. null = deteksi otomatis. Isi '' bila di root (sub)domain, atau '/parkir' bila di subfolder.
+    'base_path' => null,
 ];

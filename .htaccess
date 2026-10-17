@@ -1,11 +1,22 @@
 Options -Indexes
 DirectoryIndex index.php index.html
 
-# Teruskan header Authorization ke PHP (dipakai API)
 RewriteEngine On
+
+# Teruskan header Authorization ke PHP (dipakai API)
 RewriteCond %{HTTP:Authorization} .
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-<FilesMatch "^(config\.php|config\.sample\.php|\.gitignore|README\.md)$">
+# Folder & file tersembunyi (.git, .env, .vscode, …) tidak boleh diakses dari web.
+# Penting bila repo di-clone langsung ke document root (cPanel Git Version Control).
+RewriteRule (^|/)\.(?!well-known/) - [F,L]
+
+# File konfigurasi & dokumentasi internal
+<FilesMatch "^(config\.php|config\.sample\.php|README\.md|\.cpanel\.yml)$">
+  Require all denied
+</FilesMatch>
+
+# Arsip, dump database, backup, dan log di mana pun dalam situs
+<FilesMatch "\.(?i:zip|rar|7z|tar|gz|tgz|bz2|sql|bak|old|orig|swp|log|ini|env|sh|bat|ps1|md)$">
   Require all denied
 </FilesMatch>
