@@ -1,8 +1,8 @@
 /* Service worker: app shell bisa dibuka tanpa koneksi. API tidak pernah di-cache. */
-var VERSI = 'parkit-v5';
+var VERSI = 'parkit-v6';
 var SHELL = [
-  './', 'index.html', 'app.css?v=5', 'manifest.webmanifest',
-  'js/app.js?v=5', 'js/tarif.js', 'js/resi.js?v=5', 'js/printer.js?v=5', 'js/outbox.js',
+  './', 'index.html', 'app.css?v=6', 'manifest.webmanifest',
+  'js/app.js?v=6', 'js/tarif.js', 'js/resi.js?v=6', 'js/printer.js?v=6', 'js/outbox.js',
   'vendor/qrcode.js', 'vendor/html5-qrcode.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
 ];

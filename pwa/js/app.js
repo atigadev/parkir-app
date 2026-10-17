@@ -878,6 +878,8 @@
     $('#opsi-paket').hidden = st.mode !== 'bluetooth';
     $('#cek-gambar').checked = Printer.sebagaiGambar();
     $('#sel-paket').value = String(Printer.ukuranPaket());
+    $('#opsi-qr').hidden = st.mode === 'none';
+    $('#sel-qr').value = String(Printer.qrTipis());
     info.textContent = st.mode === 'bluetooth'
       ? (navigator.bluetooth ? (st.connected ? 'Terhubung: ' + (st.name || 'printer') : 'Belum terhubung. Nyalakan printer lalu tekan Hubungkan. Bila printer tidak muncul di daftar, printer hanya Bluetooth klasik: pakai mode RawBT.') : 'Browser ini tidak mendukung Web Bluetooth (butuh Chrome Android + HTTPS). Pilih mode RawBT.')
       : st.mode === 'rawbt' ? 'Pasang aplikasi RawBT dari Play Store, pasangkan printer di dalamnya. Paling andal untuk printer Bluetooth klasik.'
@@ -886,6 +888,7 @@
   $('#sel-printer').addEventListener('change', function (e) { Printer.setMode(e.target.value); renderPrinter(); });
   $('#cek-gambar').addEventListener('change', function (e) { Printer.setSebagaiGambar(e.target.checked); });
   $('#sel-paket').addEventListener('change', function (e) { Printer.setUkuranPaket(e.target.value); });
+  $('#sel-qr').addEventListener('change', function (e) { Printer.setQrTipis(e.target.value); });
   $('#btn-pilih-printer').addEventListener('click', function () {
     Printer.pilih().then(function () { toast('Printer terhubung', 'ok'); renderPrinter(); }).catch(function (e) { toast(e.message, 'bad', 4000); });
   });

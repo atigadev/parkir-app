@@ -47,20 +47,18 @@
     return this.line(kiri + pad('', spasi) + kanan);
   };
   Builder.prototype.qr = function (data, dotsPerModule) {
-    var q = qrcode(0, 'M');
-    q.addData(data);
-    q.make();
-    var n = q.getModuleCount(), quiet = 2, scale = dotsPerModule || Math.max(2, Math.min(8, Math.floor(240 / (n + quiet * 2))));
-    var size = (n + quiet * 2) * scale;
+    var q = Resi.qr(data);
+    // ±37 mm: 8 titik (1 mm) per modul untuk tiket standar — tahan tinta thermal yang melebar
+    var n = q.getModuleCount(), scale = dotsPerModule || Math.max(2, Math.min(8, Math.floor(300 / (n + 4))));
+    var pk = Resi.qrPiksel(q, scale, qrTipis()), size = pk.sisi;
     var bytesPerRow = Math.ceil(size / 8);
     this.align(1).push([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, bytesPerRow >> 8, size & 0xff, size >> 8]);
     for (var y = 0; y < size; y++) {
-      var my = Math.floor(y / scale) - quiet;
       for (var bx = 0; bx < bytesPerRow; bx++) {
         var byte = 0;
         for (var bit = 0; bit < 8; bit++) {
-          var x = bx * 8 + bit, mx = Math.floor(x / scale) - quiet;
-          if (x < size && mx >= 0 && my >= 0 && mx < n && my < n && q.isDark(my, mx)) byte |= 0x80 >> bit;
+          var x = bx * 8 + bit;
+          if (x < size && pk.gelap(x, y)) byte |= 0x80 >> bit;
         }
         this.b.push(byte);
       }
@@ -144,6 +142,8 @@
   // Bawaan: gambar untuk RawBT (Bluetooth klasik, cepat); teks untuk BLE (gambar ±40 KB terlalu lambat lewat paket 20 byte).
   function sebagaiGambar() { return opsi('printer_gambar', mode() === 'rawbt' ? '1' : '0') === '1'; }
   /** Ukuran paket Bluetooth (byte). 20 = aman untuk semua printer BLE. */
+  /** Kompensasi pelebaran tinta QR (titik): 0 = tanpa, 1 = bawaan, 2 = printer sangat pekat. */
+  function qrTipis() { var n = parseInt(opsi('printer_qr_tipis', '1'), 10); return n >= 0 && n <= 3 ? n : 1; }
   function ukuranPaket() { var n = parseInt(opsi('printer_paket', '20'), 10); return n > 0 ? n : 20; }
 
   function cariKarakteristik(server) {
@@ -225,7 +225,7 @@
    */
   function tulisBrowser(rows) {
     var el = document.getElementById('print-area');
-    el.innerHTML = '<img class="cetak-img" alt="" src="' + Resi.canvas(rows, 576).toDataURL('image/png') + '">';
+    el.innerHTML = '<img class="cetak-img" alt="" src="' + Resi.canvas(rows, 576, { qrTipis: qrTipis() }).toDataURL('image/png') + '">';
     var img = el.querySelector('img');
     return new Promise(function (res) {
       function go() { window.print(); res(); }
@@ -237,7 +237,7 @@
     var m = mode();
     if (m === 'none') return Promise.resolve();
     if (m === 'browser') return tulisBrowser(rows);
-    var bytes = sebagaiGambar() ? rasterDariCanvas(Resi.canvas(rows, 384)) : escpos(rows);
+    var bytes = sebagaiGambar() ? rasterDariCanvas(Resi.canvas(rows, 384, { qrTipis: qrTipis() })) : escpos(rows);
     if (m === 'rawbt') return tulisRawBT(bytes);
     return tulisBT(bytes);
   }
@@ -263,6 +263,7 @@
     cetak: cetak, tesCetak: tesCetak, pilih: pilih, sambungUlang: sambungUlang, escpos: escpos, raster: rasterDariCanvas,
     status: status, mode: mode, setMode: setMode, onChange: function (f) { listeners.push(f); },
     sebagaiGambar: sebagaiGambar, setSebagaiGambar: function (v) { setOpsi('printer_gambar', v ? '1' : '0'); },
-    ukuranPaket: ukuranPaket, setUkuranPaket: function (n) { setOpsi('printer_paket', n); }
+    ukuranPaket: ukuranPaket, setUkuranPaket: function (n) { setOpsi('printer_paket', n); },
+    qrTipis: qrTipis, setQrTipis: function (n) { setOpsi('printer_qr_tipis', n); }
   };
 })(window);

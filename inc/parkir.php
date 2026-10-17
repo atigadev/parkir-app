@@ -54,6 +54,7 @@ function catat_masuk(array $d, int $petugasId, ?int $shiftId): array
         if (!is_uuid($id) || !$urai || $urai['id'] !== $id) {
             throw new ParkirException('Data tiket offline tidak valid.', 'qr_invalid');
         }
+        $kode = $urai['kode'];
         if (q_val('SELECT 1 FROM kendaraan_masuk WHERE id = ?', [$id])) {
             return masuk_by_id($id); // sudah tersinkron sebelumnya (idempoten)
         }

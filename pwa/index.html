@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=5">
+<link rel="stylesheet" href="app.css?v=6">
 </head>
 <body>
 
@@ -127,6 +127,14 @@
         </label>
         <label class="cek" id="opsi-gambar"><input type="checkbox" id="cek-gambar">
           <span><b>Cetak sebagai gambar</b><small>Aktifkan bila hanya QR yang tercetak atau teks hilang/berantakan. Lewat Bluetooth langsung lebih lambat (±10–20 detik); paling cocok dengan RawBT.</small></span></label>
+        <label class="field" id="opsi-qr">Ketebalan QR
+          <select id="sel-qr">
+            <option value="0">Normal — printer mencetak tipis/pucat</option>
+            <option value="1">Ditipiskan 1 titik (disarankan)</option>
+            <option value="2">Ditipiskan 2 titik — hasil cetak sangat pekat/QR menyatu</option>
+          </select>
+          <small class="muted">Bila QR di kertas terlihat menggumpal hitam dan tidak terbaca, pilih 2 titik lalu Tes cetak.</small>
+        </label>
         <label class="field" id="opsi-paket">Ukuran paket Bluetooth
           <select id="sel-paket">
             <option value="20">20 byte — aman untuk semua printer (disarankan)</option>
@@ -165,9 +173,9 @@
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
 <script src="js/tarif.js"></script>
-<script src="js/resi.js?v=5"></script>
-<script src="js/printer.js?v=5"></script>
+<script src="js/resi.js?v=6"></script>
+<script src="js/printer.js?v=6"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js?v=5"></script>
+<script src="js/app.js?v=6"></script>
 </body>
 </html>

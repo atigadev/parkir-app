@@ -29,6 +29,42 @@
     var d = Tarif.parse(s);
     return dua(d.getDate()) + '/' + dua(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + dua(d.getHours()) + ':' + dua(d.getMinutes()) + ':' + dua(d.getSeconds());
   }
+  /**
+   * Matriks QR untuk dicetak. Kode tiket ditulis huruf besar agar memakai mode alphanumeric:
+   * QR lebih sederhana (33 modul vs 37), sehingga tiap modul bisa dicetak lebih besar dan tetap
+   * terbaca walau tinta thermal sedikit melebar. Server menerima huruf besar maupun kecil.
+   */
+  function qr(data) {
+    var s = String(data), up = s.toUpperCase(), q = qrcode(0, 'M');
+    if (/^[0-9A-Z $%*+\-./:]*$/.test(up)) q.addData(up, 'Alphanumeric'); else q.addData(s);
+    q.make();
+    return q;
+  }
+
+  /**
+   * Fungsi piksel QR (sudah termasuk quiet zone 2 modul) dengan kompensasi pelebaran tinta:
+   * area hitam ditipiskan `e` titik di tiap tepi, karena kertas thermal melebarkan titik hitam
+   * sehingga celah putih antar modul tertutup dan QR tidak terbaca.
+   * Mengembalikan { sisi, gelap(x, y) } dalam satuan titik printer.
+   */
+  function qrPiksel(q, m, e) {
+    var n = q.getModuleCount(), sisi = (n + 4) * m;
+    e = Math.max(0, Math.min(e || 0, Math.floor((m - 1) / 2)));
+    function modul(x, y) {
+      var mx = Math.floor(x / m) - 2, my = Math.floor(y / m) - 2;
+      return mx >= 0 && my >= 0 && mx < n && my < n && q.isDark(my, mx);
+    }
+    return {
+      sisi: sisi,
+      gelap: function (x, y) {
+        if (!modul(x, y)) return false;
+        if (!e) return true;
+        // e < m, jadi jendela ±e hanya menyentuh modul di keempat sudutnya
+        return modul(x - e, y - e) && modul(x + e, y - e) && modul(x - e, y + e) && modul(x + e, y + e);
+      }
+    };
+  }
+
   function kapital(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
   function noTiket(id) { return String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase().replace(/^(.{4})(.{4})$/, '$1-$2'); }
 
@@ -132,7 +168,7 @@
         case 'garis': return '<div class="s-garis"></div>';
         case 'garis2': return '<div class="s-garis2"></div>';
         case 'qr':
-          var q = qrcode(0, 'M'); q.addData(b[1]); q.make();
+          var q = qr(b[1]);
           return '<div class="s-qr">' + q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }) + '</div>';
         case 'poin': return '<div class="s-poin">' + esc(b[1]) + '</div>';
         case 'kecil': return '<div class="s-c s-kecil">' + esc(b[1]) + '</div>';
@@ -161,7 +197,8 @@
    * Dipakai untuk cetak sebagai gambar (raster ESC/POS) dan dialog cetak browser, agar teks selalu
    * tercetak setebal QR di printer apa pun dan pada ukuran kertas apa pun.
    */
-  function canvas(rows, lebarPx) {
+  function canvas(rows, lebarPx, opsiCetak) {
+    var erosi = (opsiCetak && opsiCetak.qrTipis) || 0;
     var W = lebarPx || 384, PAD = 6, LBL = 10;
     var c = document.createElement('canvas'), x = c.getContext('2d');
     var FONT = '"Courier New", "Roboto Mono", monospace';
@@ -217,10 +254,18 @@
           case 'garis': garis(2, false); break;
           case 'garis2': garis(2, true); break;
           case 'qr':
-            var q = qrcode(0, 'M'); q.addData(r[1]); q.make();
-            var n = q.getModuleCount(), m = Math.floor(Math.min(240, W - PAD * 2) / (n + 4)), sisi = m * (n + 4);
+            var q = qr(r[1]);
+            // ±37 mm di kertas 58 mm (1 mm per modul untuk tiket standar)
+            var n = q.getModuleCount(), m = Math.max(2, Math.floor(Math.min(W * 300 / 384, W - PAD * 2) / (n + 4))), sisi = m * (n + 4);
             var ox = Math.round((W - sisi) / 2);
-            if (gambar) for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) if (q.isDark(i, j)) x.fillRect(ox + (j + 2) * m, y + (i + 2) * m, m, m);
+            if (gambar) {
+              var pk = qrPiksel(q, m, Math.round(erosi * W / 384)), img = x.createImageData(sisi, sisi);
+              for (var py = 0; py < sisi; py++) for (var pxl = 0; pxl < sisi; pxl++) {
+                var v = pk.gelap(pxl, py) ? 0 : 255, ip = (py * sisi + pxl) * 4;
+                img.data[ip] = img.data[ip + 1] = img.data[ip + 2] = v; img.data[ip + 3] = 255;
+              }
+              x.putImageData(img, ox, y);
+            }
             y += sisi + 4; break;
           case 'poin':
             bungkus(r[1], LEBAR - 2).forEach(function (s, i) {
@@ -241,5 +286,5 @@
     return c;
   }
 
-  global.Resi = { masuk: masuk, keluar: keluar, html: html, canvas: canvas, bungkus: bungkus, noTiket: noTiket, rp: rp, LEBAR: LEBAR };
+  global.Resi = { masuk: masuk, keluar: keluar, html: html, canvas: canvas, bungkus: bungkus, qr: qr, qrPiksel: qrPiksel, noTiket: noTiket, rp: rp, LEBAR: LEBAR };
 })(window);

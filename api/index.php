@@ -292,7 +292,7 @@ try {
                 $urai = qr_urai($kode);
                 if (!$urai) gagal('QR tidak dikenali atau palsu.', 'qr_invalid');
                 $km = masuk_by_id($urai['id']);
-                if (!$km || !hash_equals($km['kode_qr'], $kode)) {
+                if (!$km || !hash_equals($km['kode_qr'], $urai['kode'])) {
                     gagal($urai['offline'] ? 'Tiket offline ini belum tersinkron dari pos masuk.' : 'Tiket tidak terdaftar.', 'tidak_ditemukan', 404);
                 }
             }
@@ -377,7 +377,7 @@ try {
                     if (!$urai) throw new ParkirException('QR tidak valid / palsu.', 'qr_invalid');
                     $km = masuk_by_id($urai['id']);
                     if (!$km) throw new ParkirException('Tiket masuk belum tersinkron.', 'menunggu');
-                    if (!hash_equals($km['kode_qr'], (string)$item['kode_qr'])) throw new ParkirException('QR tidak cocok.', 'qr_invalid');
+                    if (!hash_equals($km['kode_qr'], $urai['kode'])) throw new ParkirException('QR tidak cocok.', 'qr_invalid');
                     $tk = catat_keluar([
                         'kendaraan_masuk_id' => $km['id'], 'metode' => $item['metode'] ?? 'cash', 'waktu_keluar' => $item['waktu_keluar'] ?? null,
                         'tanpa_tiket' => false, 'catatan' => $item['catatan'] ?? '', 'foto' => $foto,

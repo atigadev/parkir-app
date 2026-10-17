@@ -29,8 +29,16 @@ function qr_tanda(string $id, string $j, string $ts): string
  */
 function qr_urai(string $kode): ?array
 {
+    // QR dicetak dalam huruf besar (mode alphanumeric: modul lebih besar, lebih mudah dipindai
+    // di kertas thermal). Normalisasi ke bentuk kanonik huruf kecil seperti yang tersimpan di database.
     $p = explode('.', trim($kode));
-    if (count($p) !== 5 || $p[0] !== 'PK1' || !is_uuid($p[1]) || !in_array($p[2], ['M', 'C'], true)) {
+    if (count($p) !== 5) return null;
+    $p[0] = strtoupper($p[0]);
+    $p[1] = strtolower($p[1]);
+    $p[2] = strtoupper($p[2]);
+    $p[3] = strtolower($p[3]);
+    $p[4] = strtoupper(substr($p[4], 0, 3)) === 'OFF' ? 'OFF' . strtolower(substr($p[4], 3)) : strtolower($p[4]);
+    if ($p[0] !== 'PK1' || !is_uuid($p[1]) || !in_array($p[2], ['M', 'C'], true)) {
         return null;
     }
     [, $id, $j, $ts, $tanda] = $p;
@@ -44,5 +52,6 @@ function qr_urai(string $kode): ?array
         'jenis'       => $j === 'C' ? 'mobil' : 'motor',
         'waktu_masuk' => date('Y-m-d H:i:s', (int)base_convert($ts, 36, 10)),
         'offline'     => $offline,
+        'kode'        => implode('.', $p), // bentuk kanonik, untuk dicocokkan dengan kendaraan_masuk.kode_qr
     ];
 }
