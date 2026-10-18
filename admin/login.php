@@ -38,7 +38,7 @@ if (is_post()) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Masuk · ParkIt Admin</title>
 <link rel="icon" href="<?= e(base_url('pwa/icons/icon.svg')) ?>">
-<link rel="stylesheet" href="<?= e(base_url('admin/assets/admin.css')) ?>?v=1">
+<link rel="stylesheet" href="<?= e(base_url('admin/assets/admin.css')) ?>?v=4">
 </head>
 <body>
 <div class="login-wrap">

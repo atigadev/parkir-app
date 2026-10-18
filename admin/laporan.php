@@ -51,8 +51,9 @@ if (($_GET['export'] ?? '') === 'csv') {
     foreach ($data as $k => $d) fputcsv($out, [$k, $d['masuk'], $d['keluar'], $d['cash'], $d['qris'], $d['cash'] + $d['qris'], $d['durasi'], $d['tanpa_tiket'], $d['denda'], $d['gratis']], ';');
     fputcsv($out, ['TOTAL', $sum['masuk'], $sum['keluar'], $sum['cash'], $sum['qris'], $sum['cash'] + $sum['qris'], $avgDur, $sum['tanpa_tiket'], $sum['denda'], $sum['gratis']], ';');
     fputcsv($out, [], ';');
-    fputcsv($out, ['Shift ditutup', 'Petugas', 'Pos', 'Cash sistem', 'Setoran', 'Selisih', 'Catatan'], ';');
-    foreach ($shifts as $s) fputcsv($out, array_map('csv_aman', [$s['waktu_tutup'], $s['nama'], $s['pos_nama'], $s['total_cash_sistem'], $s['total_cash_setor'], $s['selisih'], $s['catatan']]), ';');
+    fputcsv($out, ['Shift ditutup', 'Petugas', 'Pos', 'Cash sistem', 'Setoran', 'Selisih', 'Setoran susulan', 'Status tindak lanjut', 'Catatan', 'Catatan tindak lanjut'], ';');
+    foreach ($shifts as $s) fputcsv($out, array_map('csv_aman', [$s['waktu_tutup'], $s['nama'], $s['pos_nama'], $s['total_cash_sistem'], $s['total_cash_setor'], $s['selisih'],
+        $s['setor_susulan'] ?? 0, (int)$s['selisih'] === 0 ? 'pas' : ($s['selisih_status'] ?? 'belum ditindaklanjuti'), $s['catatan'], $s['selisih_catatan'] ?? '']), ';');
     exit;
 }
 
@@ -110,7 +111,7 @@ layout_atas('Laporan', 'laporan.php');
       <tbody>
       <?php foreach ($shifts as $s): ?>
         <tr><td><?= tgl($s['waktu_tutup']) ?></td><td><?= e($s['nama']) ?></td><td><?= e($s['pos_nama']) ?></td><td class="num"><?= rupiah($s['total_cash_sistem']) ?></td><td class="num"><?= rupiah($s['total_cash_setor']) ?></td>
-          <td class="num"><?= (int)$s['selisih'] === 0 ? badge('pas', 'ok') : badge(((int)$s['selisih'] > 0 ? '+' : '') . rupiah($s['selisih']), (int)$s['selisih'] < 0 ? 'danger' : 'warn') ?></td><td><?= e($s['catatan']) ?></td></tr>
+          <td class="num"><?= isset($s['selisih_status']) || array_key_exists('selisih_status', $s) ? badge_selisih($s) : ((int)$s['selisih'] === 0 ? badge('pas', 'ok') : badge(rupiah($s['selisih']), (int)$s['selisih'] < 0 ? 'danger' : 'warn')) ?></td><td><?= e($s['catatan']) ?></td></tr>
       <?php endforeach; if (!$shifts): ?><tr><td colspan="7" class="empty">Belum ada shift ditutup pada periode ini.</td></tr><?php endif; ?>
       </tbody>
     </table>

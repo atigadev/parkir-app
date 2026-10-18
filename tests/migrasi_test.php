@@ -55,12 +55,16 @@ function siapkan_db_lama(PDO $root): void
     $pdo->exec('ALTER TABLE log_aktivitas DROP INDEX idx_aksi_ref_waktu');
     $pdo->exec('DROP TABLE petugas_token');
     $pdo->exec('ALTER TABLE petugas DROP COLUMN antrean_offline, DROP COLUMN antrean_sejak, DROP COLUMN jam_selisih_detik');
+    $pdo->exec('ALTER TABLE shift DROP COLUMN setor_susulan, DROP COLUMN selisih_status, DROP COLUMN selisih_catatan, DROP COLUMN selisih_oleh, DROP COLUMN selisih_at');
+    $pdo->exec('ALTER TABLE shift DROP INDEX idx_pos_terbuka, DROP COLUMN pos_id');
+    $pdo->exec('DROP TABLE pos_petugas');
+    $pdo->exec('DROP TABLE pos');
     $pdo->exec("DELETE FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi','skema_versi')");
 }
 function struktur_lengkap(): bool
 {
     return kolom_ada('shift', 'pos_nama') && kolom_ada('petugas', 'app_versi') && kolom_ada('petugas', 'app_versi_at')
-        && kolom_ada('transaksi_keluar', 'total_offline') && kolom_ada('kendaraan_masuk', 'catatan_sistem') && indeks_ada('log_aktivitas', 'idx_aksi_ref_waktu') && tabel_ada('petugas_token') && kolom_ada('petugas', 'jam_selisih_detik') && kolom_ada('petugas', 'antrean_sejak')
+        && kolom_ada('transaksi_keluar', 'total_offline') && kolom_ada('kendaraan_masuk', 'catatan_sistem') && indeks_ada('log_aktivitas', 'idx_aksi_ref_waktu') && tabel_ada('petugas_token') && kolom_ada('petugas', 'jam_selisih_detik') && kolom_ada('petugas', 'antrean_sejak') && kolom_ada('shift', 'selisih_status') && kolom_ada('shift', 'setor_susulan') && tabel_ada('pos') && tabel_ada('pos_petugas') && kolom_ada('shift', 'pos_id')
         && q_val("SELECT COUNT(*) FROM pengaturan WHERE kunci IN ('ocr_ambang','footer_struk','telepon_lokasi')") == 3;
 }
 

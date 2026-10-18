@@ -30,6 +30,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
 a { color: var(--accent); text-decoration: none; }
@@ -187,3 +188,48 @@ a[data-foto] { cursor: zoom-in; display: inline-block; }
 .perhatian-daftar .titik { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .perhatian-daftar .merah .titik { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
 .perhatian-daftar .kuning .titik { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+/* Modal (dialog) admin */
+.modal { border: 0; padding: 0; border-radius: 16px; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0,0,0,.35); }
+.modal::backdrop { background: rgba(10, 15, 25, .55); }
+.modal[open] { animation: modal-masuk .16s ease-out; }
+@keyframes modal-masuk { from { transform: translateY(12px); opacity: 0; } }
+.modal-isi { display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.modal-kepala { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+.modal-kepala h2 { font-size: 17px; }
+.modal-kepala small { display: block; margin-top: 3px; }
+.modal-badan { padding: 18px 20px; display: grid; gap: 16px; overflow-y: auto; }
+.modal-kaki { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 16px 16px; }
+.teks-bahaya { color: var(--danger); font-weight: 600; }
+
+/* Tindak lanjut selisih setoran */
+.mtl-ringkas { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.mtl-ringkas > div { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; }
+.mtl-ringkas small { display: block; color: var(--muted); font-size: 12px; }
+.mtl-ringkas b { font-variant-numeric: tabular-nums; }
+.mtl-sisa.kurang { background: var(--danger-soft) !important; border-color: transparent !important; }
+.mtl-sisa.kurang b { color: var(--danger); font-size: 18px; }
+.mtl-sisa.lebih { background: var(--warn-soft) !important; border-color: transparent !important; }
+.mtl-sisa.lebih b { color: var(--warn); font-size: 18px; }
+.mtl-opsi { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.mtl-opsi legend { font-weight: 600; font-size: 13px; margin-bottom: 6px; padding: 0; }
+.opsi-kartu { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px; cursor: pointer; }
+.opsi-kartu:hover { border-color: var(--accent); }
+.opsi-kartu:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opsi-kartu input { margin-top: 3px; flex: none; accent-color: var(--accent); }
+.opsi-kartu b { display: block; font-size: 14px; }
+.opsi-kartu small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.mtl-nominal { display: grid; gap: 6px; }
+.mtl-nominal-baris { display: flex; gap: 8px; }
+.mtl-nominal-baris input { flex: 1; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.modal textarea { width: 100%; resize: vertical; }
+@media (max-width: 520px) { .modal-kaki { flex-direction: column-reverse; } .modal-kaki .btn { justify-content: center; } }
+/* Pos & Gerbang */
+.jenis-pos label { align-items: flex-start; }
+.daftar-cek { display: grid; gap: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); font-weight: 400; }
+.daftar-cek label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.kertas-pilih { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kertas-pilih label { border: 2px solid var(--border); border-radius: 10px; padding: 12px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.kertas-pilih label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.kertas-pilih b { display: block; }
+div.f { display: flex; flex-direction: column; gap: 5px; font-weight: 500; font-size: 13px; }
+div.f > small { color: var(--muted); font-weight: 400; }

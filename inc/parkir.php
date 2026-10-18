@@ -26,6 +26,59 @@ function kolom_tersedia(string $tabel, string $kolom): bool
     return $cache[$k];
 }
 
+// ---------------------------------------------------------------- pos / gerbang
+/** Ada pos aktif yang diatur admin? Bila belum, aplikasi memakai cara lama (isian nama pos bebas). */
+function pos_dikonfigurasi(): bool
+{
+    return kolom_tersedia_tabel('pos') && (bool)q_val('SELECT 1 FROM pos WHERE aktif = 1 LIMIT 1');
+}
+
+/**
+ * Pos yang boleh dipilih petugas: pos yang ditugaskan kepadanya; bila ia belum ditugaskan ke pos mana pun,
+ * semua pos aktif. Disertai nama petugas yang sedang membuka shift di pos tersebut.
+ */
+function pos_untuk_petugas(int $petugasId): array
+{
+    if (!kolom_tersedia_tabel('pos')) return [];
+    $ditugaskan = (bool)q_val('SELECT 1 FROM pos_petugas pp JOIN pos ON pos.id = pp.pos_id AND pos.aktif = 1 WHERE pp.petugas_id = ? LIMIT 1', [$petugasId]);
+    $rows = $ditugaskan
+        ? q_all('SELECT pos.id, pos.nama, pos.jenis, pos.keterangan FROM pos JOIN pos_petugas pp ON pp.pos_id = pos.id AND pp.petugas_id = ? WHERE pos.aktif = 1 ORDER BY pos.jenis, pos.urutan, pos.nama', [$petugasId])
+        : q_all('SELECT id, nama, jenis, keterangan FROM pos WHERE aktif = 1 ORDER BY jenis, urutan, nama');
+    foreach ($rows as &$r) {
+        $r['id'] = (int)$r['id'];
+        $r['dipakai_oleh'] = array_column(q_all('SELECT p.nama FROM shift s JOIN petugas p ON p.id = s.petugas_id WHERE s.pos_id = ? AND s.waktu_tutup IS NULL AND s.petugas_id <> ?', [$r['id'], $petugasId]), 'nama');
+    }
+    return $rows;
+}
+
+/**
+ * Buka shift. Bila admin sudah mengatur daftar pos, $posId wajib dan harus termasuk pos yang boleh dipilih
+ * petugas; jenis (masuk/keluar) & nama diambil dari daftar. Tanpa daftar pos: perilaku lama ($pos & $posNama bebas).
+ */
+function buka_shift(int $petugasId, ?int $posId, string $pos = 'masuk', string $posNama = ''): array
+{
+    if ($s = shift_aktif($petugasId)) return $s;
+    if (pos_dikonfigurasi()) {
+        if (!$posId) throw new ParkirException('Pilih pos dari daftar. Bila daftar pos tidak muncul, muat ulang aplikasi.', 'pos_wajib');
+        $pilihan = array_column(pos_untuk_petugas($petugasId), null, 'id');
+        if (!isset($pilihan[$posId])) throw new ParkirException('Pos ini tidak tersedia untuk Anda. Hubungi admin.', 'pos_tidak_boleh');
+        $pos = $pilihan[$posId]['jenis'];
+        $posNama = $pilihan[$posId]['nama'];
+    } else {
+        $posId = null;
+        $pos = $pos === 'keluar' ? 'keluar' : 'masuk';
+        $posNama = mb_substr(trim($posNama), 0, 50) ?: ($pos === 'masuk' ? 'Pos Masuk' : 'Pos Keluar');
+    }
+    if (kolom_tersedia('shift', 'pos_id')) {
+        q('INSERT INTO shift (petugas_id, pos, pos_nama, pos_id, waktu_buka) VALUES (?,?,?,?,?)', [$petugasId, $pos, $posNama, $posId, now()]);
+    } else {
+        q('INSERT INTO shift (petugas_id, pos, pos_nama, waktu_buka) VALUES (?,?,?,?)', [$petugasId, $pos, $posNama, now()]);
+    }
+    $id = (int)db()->lastInsertId();
+    log_aktivitas($petugasId, 'buka_shift', $id, null, ['pos' => $pos, 'pos_nama' => $posNama, 'pos_id' => $posId]);
+    return q_one('SELECT * FROM shift WHERE id = ?', [$id]);
+}
+
 function shift_aktif(int $petugasId): ?array
 {
     return q_one('SELECT * FROM shift WHERE petugas_id = ? AND waktu_tutup IS NULL ORDER BY id DESC LIMIT 1', [$petugasId]);
@@ -282,6 +335,77 @@ function tutup_shift(array $shift, ?int $setor, ?string $catatan): array
         now(), $sistem, $setor, $selisih, $catatan !== null && trim($catatan) !== '' ? mb_substr(trim($catatan), 0, 255) : null, $shift['id'],
     ]);
     return ['sistem' => $sistem, 'setor' => $setor, 'selisih' => $selisih];
+}
+
+/** Jenis tindak lanjut selisih setoran & labelnya. */
+const TINDAK_LANJUT_SELISIH = [
+    'susulan'      => 'Setoran susulan diterima',
+    'ditanggung'   => 'Ditanggung petugas (potong gaji/cicilan)',
+    'dihapuskan'   => 'Dihapuskan (diikhlaskan pengelola)',
+    'dikembalikan' => 'Kelebihan dikembalikan ke petugas / masuk kas',
+];
+
+/** Sisa selisih setelah setoran susulan (negatif = masih kurang). */
+function sisa_selisih(array $shift): int
+{
+    return (int)$shift['selisih'] + (int)($shift['setor_susulan'] ?? 0);
+}
+
+/**
+ * Catat tindak lanjut selisih setoran shift pos keluar. Selisih asli tidak diubah (jejak audit);
+ * setoran susulan diakumulasi, dan status menjadi 'lunas' bila kekurangan sudah tertutup.
+ */
+function tindak_lanjut_selisih(int $shiftId, string $jenis, int $nominal, string $catatan, int $adminId): array
+{
+    $s = q_one("SELECT * FROM shift WHERE id = ? AND pos = 'keluar' AND waktu_tutup IS NOT NULL", [$shiftId]);
+    if (!$s) throw new ParkirException('Shift tidak ditemukan atau belum ditutup.', 'shift');
+    if (!isset(TINDAK_LANJUT_SELISIH[$jenis])) throw new ParkirException('Jenis tindak lanjut tidak dikenal.', 'jenis');
+    $catatan = trim($catatan);
+    if ($catatan === '') throw new ParkirException('Catatan tindak lanjut wajib diisi.', 'catatan');
+    $sisa = sisa_selisih($s);
+    if ($sisa === 0 && !$s['selisih_status']) throw new ParkirException('Shift ini tidak memiliki selisih.', 'selisih');
+    if ($s['selisih_status'] && $s['selisih_status'] !== 'sebagian') throw new ParkirException('Selisih shift ini sudah ditindaklanjuti.', 'selesai');
+
+    $susulan = (int)$s['setor_susulan'];
+    if ($jenis === 'susulan') {
+        if ($sisa >= 0) throw new ParkirException('Setoran susulan hanya untuk kekurangan setor.', 'jenis');
+        if ($nominal <= 0) throw new ParkirException('Isi nominal setoran susulan.', 'nominal');
+        if ($nominal > -$sisa) throw new ParkirException('Nominal melebihi sisa kekurangan ' . rupiah(-$sisa) . '.', 'nominal');
+        $susulan += $nominal;
+        $status = $susulan + (int)$s['selisih'] >= 0 ? 'lunas' : 'sebagian';
+    } elseif ($jenis === 'dikembalikan') {
+        if ($sisa <= 0) throw new ParkirException('Pilihan ini hanya untuk kelebihan setor.', 'jenis');
+        $status = 'dikembalikan';
+    } else {
+        if ($sisa >= 0) throw new ParkirException('Pilihan ini hanya untuk kekurangan setor.', 'jenis');
+        $status = $jenis;
+    }
+    $riwayat = trim(($s['selisih_catatan'] ? $s['selisih_catatan'] . ' | ' : '') . date('d/m') . ' ' . TINDAK_LANJUT_SELISIH[$jenis]
+        . ($jenis === 'susulan' ? ' ' . rupiah($nominal) : '') . ': ' . $catatan);
+    q('UPDATE shift SET setor_susulan = ?, selisih_status = ?, selisih_catatan = ?, selisih_oleh = ?, selisih_at = ? WHERE id = ?', [
+        $susulan, $status, mb_substr($riwayat, -255), $adminId, now(), $shiftId,
+    ]);
+    log_aktivitas($adminId, 'tindak_lanjut_selisih', $shiftId,
+        ['selisih' => (int)$s['selisih'], 'susulan' => (int)$s['setor_susulan'], 'status' => $s['selisih_status']],
+        ['jenis' => $jenis, 'nominal' => $nominal, 'susulan' => $susulan, 'status' => $status, 'catatan' => $catatan]);
+    return ['status' => $status, 'sisa' => $susulan + (int)$s['selisih']];
+}
+
+/** Label status selisih untuk tampilan (HTML lencana). */
+function badge_selisih(array $s): string
+{
+    $sl = (int)$s['selisih'];
+    if ($sl === 0) return badge('pas', 'ok');
+    $asli = badge(($sl > 0 ? '+' : '') . rupiah($sl), $sl < 0 ? 'danger' : 'warn');
+    $st = $s['selisih_status'] ?? null;
+    $label = [
+        'lunas'        => ['lunas · susulan ' . rupiah($s['setor_susulan'] ?? 0), 'ok'],
+        'sebagian'     => ['sisa ' . rupiah(-sisa_selisih($s)), 'danger'],
+        'ditanggung'   => ['ditanggung petugas', 'info'],
+        'dihapuskan'   => ['dihapuskan', ''],
+        'dikembalikan' => ['dikembalikan', 'ok'],
+    ][$st] ?? [$sl < 0 ? 'belum ditindaklanjuti' : 'belum ditindaklanjuti', 'warn'];
+    return $asli . '<br>' . badge($label[0], $label[1]);
 }
 
 /** Batalkan (void) tiket oleh admin. Tidak ada data yang dihapus. */

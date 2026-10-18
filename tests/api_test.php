@@ -56,6 +56,7 @@ $akun = [990 => ['qa_masuk', 'masuk'], 991 => ['qa_keluar', 'keluar'], 992 => ['
 
 function bersihkan(): void
 {
+    if (kolom_tersedia_tabel('pos')) q("DELETE FROM pos WHERE nama LIKE 'QA-UJI %'");
     q("DELETE tk FROM transaksi_keluar tk JOIN kendaraan_masuk km ON km.id = tk.kendaraan_masuk_id WHERE km.petugas_id BETWEEN 990 AND 993 OR tk.petugas_id BETWEEN 990 AND 993");
     q("DELETE FROM kendaraan_masuk WHERE petugas_id BETWEEN 990 AND 993");
     q("DELETE FROM shift WHERE petugas_id BETWEEN 990 AND 993");
@@ -72,8 +73,33 @@ try {
     $tm = $login('qa_masuk')['data']['token'] ?? '';
     $tk = $login('qa_keluar')['data']['token'] ?? '';
     cek('0. login petugas uji', $tm !== '' && $tk !== '');
-    api('shift.buka', $tm, ['pos' => 'masuk', 'pos_nama' => 'QA Masuk']);
-    api('shift.buka', $tk, ['pos' => 'keluar', 'pos_nama' => 'QA Keluar']);
+    // ---------------------------------------------------------------- pos & gerbang
+    $posBaru = function (string $nama, string $jenis, array $petugas = [], int $aktif = 1): int {
+        q('INSERT INTO pos (nama, jenis, aktif, dibuat) VALUES (?, ?, ?, ?)', [$nama, $jenis, $aktif, now()]);
+        $id = (int)db()->lastInsertId();
+        foreach ($petugas as $pid) q('INSERT INTO pos_petugas (pos_id, petugas_id) VALUES (?, ?)', [$id, $pid]);
+        return $id;
+    };
+    $posM = $posBaru('QA-UJI Masuk', 'masuk', [990]);
+    $posK = $posBaru('QA-UJI Keluar', 'keluar', [991]);
+    $posLain = $posBaru('QA-UJI Lain', 'keluar');
+    $posMati = $posBaru('QA-UJI Nonaktif', 'masuk', [990], 0);
+    $idPos = function (array $r) { return array_column($r['data']['pos_tersedia'] ?? [], 'id'); };
+    $lihatM = $idPos(api('me', $tm));
+    cek('P1. petugas yang ditugaskan hanya melihat pos tugasnya (pos nonaktif tidak tampil)', $lihatM === [$posM]);
+    $lihatBebas = $idPos(api('me', $login('qa_dua_hp')['data']['token'] ?? ''));
+    cek('P2. petugas tanpa penugasan melihat semua pos aktif', in_array($posM, $lihatBebas, true) && in_array($posK, $lihatBebas, true) && in_array($posLain, $lihatBebas, true) && !in_array($posMati, $lihatBebas, true));
+    $r = api('shift.buka', $tm, ['pos_id' => $posK]);
+    cek('P3. membuka shift di pos yang bukan tugasnya ditolak', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'pos_tidak_boleh');
+    $r = api('shift.buka', $tm, ['pos_id' => $posMati]);
+    cek('P4. pos nonaktif tidak bisa dipakai', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'pos_tidak_boleh');
+    $r = api('shift.buka', $tm, ['pos' => 'masuk', 'pos_nama' => 'Ketik bebas']);
+    cek('P5. isian nama pos bebas (aplikasi lama) ditolak bila daftar pos sudah ada', !($r['ok'] ?? true) && ($r['kode'] ?? '') === 'pos_wajib');
+    $r = api('shift.buka', $tm, ['pos_id' => $posM]);
+    cek('P6. buka shift di pos tugas: jenis & nama dari daftar admin', ($r['ok'] ?? false) && $r['data']['pos'] === 'masuk' && $r['data']['pos_nama'] === 'QA-UJI Masuk' && (int)$r['data']['pos_id'] === $posM);
+    api('shift.buka', $tk, ['pos_id' => $posK]);
+    $info = array_column(pos_untuk_petugas(993), null, 'id');
+    cek('P7. daftar pos menunjukkan petugas lain yang sedang membuka shift di pos itu', ($info[$posK]['dipakai_oleh'] ?? []) === ['QA qa_keluar']);
     $tiket = function (string $plat, int $mundurMenit = 0) use ($tm): array {
         $d = api('masuk', $tm, ['_form' => ['plat' => $plat, 'jenis' => 'motor', 'paksa' => '1']])['data'];
         if ($mundurMenit) q('UPDATE kendaraan_masuk SET waktu_masuk = ? WHERE id = ?', [jkt(time() - $mundurMenit * 60), $d['id']]);
@@ -192,6 +218,33 @@ try {
     $judul = array_column(daftar_perhatian(), 'judul');
     cek('#12b. panel Perlu perhatian menampilkan antrean tertahan & jam tidak sinkron',
         (bool)preg_grep('/Antrean offline tertahan di HP QA qa_masuk/', $judul) && (bool)preg_grep('/Jam HP QA qa_masuk tidak sinkron/', $judul));
+
+    // ---------------------------------------------------------------- tindak lanjut selisih setoran
+    // Hitung peringatan "kurang setor" (database bisa sudah berisi selisih sungguhan) lalu bandingkan.
+    $jmlKurang = function () { foreach (daftar_perhatian() as $p) if (preg_match('/^(\d+) shift kurang setor belum ditindaklanjuti/', $p['judul'], $m)) return (int)$m[1]; return 0; };
+    $awal = $jmlKurang();
+    q("INSERT INTO shift (petugas_id, pos, pos_nama, waktu_buka, waktu_tutup, total_cash_sistem, total_cash_setor, selisih) VALUES (991, 'keluar', 'QA TL', ?, ?, 50000, 17000, -33000)", [jkt(time() - 7200), jkt(time() - 3600)]);
+    $sid = (int)db()->lastInsertId();
+    $adaKurang = function () use ($jmlKurang, $awal) { return $jmlKurang() > $awal; };
+    cek('TL1. kurang setor muncul di Perlu perhatian', $adaKurang());
+    $h = tindak_lanjut_selisih($sid, 'susulan', 13000, 'disetor sebagian', 1);
+    cek('TL2. setoran susulan sebagian -> status sebagian, sisa Rp20.000', $h['status'] === 'sebagian' && $h['sisa'] === -20000);
+    $tolak = false; try { tindak_lanjut_selisih($sid, 'susulan', 25000, 'lebih', 1); } catch (ParkirException $e) { $tolak = true; }
+    cek('TL3. susulan melebihi sisa kekurangan ditolak', $tolak);
+    cek('TL4. masih muncul di Perlu perhatian selama belum tuntas', $adaKurang());
+    $h = tindak_lanjut_selisih($sid, 'ditanggung', 0, 'potong gaji bulan ini', 1);
+    $sh = q_one('SELECT selisih, setor_susulan, selisih_status FROM shift WHERE id = ?', [$sid]);
+    cek('TL5. sisa ditanggung petugas -> tuntas; selisih asli tidak diubah (audit)', $h['status'] === 'ditanggung' && (int)$sh['selisih'] === -33000 && (int)$sh['setor_susulan'] === 13000);
+    cek('TL6. hilang dari Perlu perhatian setelah tuntas', !$adaKurang());
+    $tolak = false; try { tindak_lanjut_selisih($sid, 'dihapuskan', 0, 'lagi', 1); } catch (ParkirException $e) { $tolak = true; }
+    cek('TL7. shift yang sudah tuntas tidak bisa ditindaklanjuti ulang', $tolak);
+    q("INSERT INTO shift (petugas_id, pos, pos_nama, waktu_buka, waktu_tutup, total_cash_sistem, total_cash_setor, selisih) VALUES (991, 'keluar', 'QA TL', ?, ?, 10000, 15000, 5000)", [jkt(time() - 7200), jkt(time() - 3600)]);
+    $sid2 = (int)db()->lastInsertId();
+    $tolak = false; try { tindak_lanjut_selisih($sid2, 'susulan', 1000, 'x', 1); } catch (ParkirException $e) { $tolak = true; }
+    $h = tindak_lanjut_selisih($sid2, 'dikembalikan', 0, 'dikembalikan ke petugas', 1);
+    cek('TL8. lebih setor: susulan ditolak, "dikembalikan" diterima', $tolak && $h['status'] === 'dikembalikan');
+    cek('TL9. tindak lanjut tercatat di log aktivitas', (int)q_val("SELECT COUNT(*) FROM log_aktivitas WHERE aksi = 'tindak_lanjut_selisih' AND referensi_id IN (?, ?)", [$sid, $sid2]) === 3);
+    q("DELETE FROM log_aktivitas WHERE aksi = 'tindak_lanjut_selisih' AND referensi_id IN (?, ?)", [$sid, $sid2]);
 
     // ---------------------------------------------------------------- #14 ping
     $p = api('ping');

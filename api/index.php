@@ -218,6 +218,7 @@ try {
             'petugas' => ['id' => (int)$p['id'], 'nama' => $p['nama'], 'username' => $p['username'], 'role' => $p['role']],
             'shift'   => $shift,
             'config'  => konfigurasi_klien(),
+            'pos_tersedia' => pos_untuk_petugas((int)$p['id']),
         ]);
 
     case 'auth.logout':
@@ -233,19 +234,15 @@ try {
             'petugas' => ['id' => $p['id'], 'nama' => $p['nama'], 'username' => $p['username'], 'role' => $p['role']],
             'shift'   => shift_aktif($p['id']),
             'config'  => konfigurasi_klien(),
+            'pos_tersedia' => pos_untuk_petugas($p['id']),
         ]);
 
     // ---------------- Shift ------------------------------------------------
     case 'shift.buka':
         wajib_metode('POST');
         $p = petugas_dari_token();
-        $pos = (input()['pos'] ?? '') === 'keluar' ? 'keluar' : 'masuk';
-        $posNama = mb_substr(trim((string)(input()['pos_nama'] ?? '')), 0, 50) ?: ($pos === 'masuk' ? 'Pos Masuk' : 'Pos Keluar');
-        if ($s = shift_aktif($p['id'])) ok($s);
-        q('INSERT INTO shift (petugas_id, pos, pos_nama, waktu_buka) VALUES (?,?,?,?)', [$p['id'], $pos, $posNama, now()]);
-        $id = (int)db()->lastInsertId();
-        log_aktivitas($p['id'], 'buka_shift', $id, null, ['pos' => $pos, 'pos_nama' => $posNama]);
-        ok(q_one('SELECT * FROM shift WHERE id = ?', [$id]));
+        $in = input();
+        ok(buka_shift($p['id'], !empty($in['pos_id']) ? (int)$in['pos_id'] : null, (string)($in['pos'] ?? ''), (string)($in['pos_nama'] ?? '')));
 
     case 'shift.ringkasan':
         $p = petugas_dari_token();

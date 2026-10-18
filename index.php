@@ -9,7 +9,7 @@ header_keamanan('admin');
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ParkIt</title>
 <link rel="icon" href="pwa/icons/icon.svg">
-<link rel="stylesheet" href="admin/assets/admin.css">
+<link rel="stylesheet" href="admin/assets/admin.css?v=4">
 <style>
   .pick { display: grid; gap: 14px; max-width: 420px; width: 100%; }
   .pick a { display: flex; gap: 14px; align-items: center; padding: 18px; text-decoration: none; color: var(--text); }

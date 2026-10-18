@@ -111,7 +111,7 @@
   }
 
   function simpanSesi() {
-    save('sesi', { token: S.token, petugas: S.petugas, shift: S.shift, config: S.config });
+    save('sesi', { token: S.token, petugas: S.petugas, shift: S.shift, config: S.config, posTersedia: S.posTersedia });
   }
 
   function tampil(nama) {
@@ -123,10 +123,11 @@
   function mulai() {
     var sesi = load('sesi', null);
     if (sesi && sesi.token) {
-      S.token = sesi.token; S.petugas = sesi.petugas; S.shift = sesi.shift; S.config = sesi.config;
+      S.token = sesi.token; S.petugas = sesi.petugas; S.shift = sesi.shift; S.config = sesi.config; S.posTersedia = sesi.posTersedia || [];
       masukAplikasi();
       api('me').then(function (d) {
-        S.petugas = d.petugas; S.config = d.config;
+        S.petugas = d.petugas; S.config = d.config; S.posTersedia = d.pos_tersedia || [];
+        if (!S.shift && !d.shift) renderPilihanPos();
         var berubah = (S.shift && S.shift.id) !== (d.shift && d.shift.id);
         S.shift = d.shift;
         simpanSesi();
@@ -144,7 +145,10 @@
       f.pos_nama.value = load('pos_nama', '');
       var p = load('pos_terakhir', null);
       if (p) $$('input[name=pos]', f).forEach(function (r) { r.checked = r.value === p; });
+      renderPilihanPos();
       tampil('pos');
+      // Segarkan daftar pos (penugasan bisa berubah, dan status pos yang sedang dipakai petugas lain)
+      api('me').then(function (d) { S.posTersedia = d.pos_tersedia || []; simpanSesi(); if (!S.shift) renderPilihanPos(); }).catch(function () {});
       return;
     }
     document.body.classList.toggle('pos-keluar', S.shift.pos === 'keluar');
@@ -163,7 +167,7 @@
     var f = ev.target, btn = $('button', f);
     btn.disabled = true; btn.textContent = 'Memeriksa…';
     api('auth.login', { body: { username: f.username.value.trim(), password: f.password.value } }).then(function (d) {
-      S.token = d.token; S.petugas = d.petugas; S.shift = d.shift; S.config = d.config;
+      S.token = d.token; S.petugas = d.petugas; S.shift = d.shift; S.config = d.config; S.posTersedia = d.pos_tersedia || [];
       simpanSesi();
       f.password.value = '';
       masukAplikasi();
@@ -172,15 +176,53 @@
     }).then(function () { btn.disabled = false; btn.textContent = 'Masuk'; });
   });
 
+  /**
+   * Daftar pos dari admin, dikelompokkan pos masuk / pos keluar. Bila admin belum membuat daftar pos,
+   * tampil cara lama (pilih jenis + ketik nama pos).
+   */
+  function renderPilihanPos() {
+    var daftar = S.posTersedia || [], box = $('#pos-daftar'), pakaiDaftar = daftar.length > 0;
+    box.hidden = !pakaiDaftar;
+    $('#pos-lama').hidden = pakaiDaftar;
+    if (!pakaiDaftar) return;
+    var terakhir = load('pos_id_terakhir', null), dipilih = (box.querySelector('input:checked') || {}).value;
+    var grup = { masuk: [], keluar: [] };
+    daftar.forEach(function (p) { (grup[p.jenis] || grup.masuk).push(p); });
+    box.innerHTML = ['masuk', 'keluar'].filter(function (j) { return grup[j].length; }).map(function (j) {
+      return '<div class="pos-grup"><h3>' + (j === 'masuk' ? '⬇ Pos masuk' : '⬆ Pos keluar') + '</h3>' + grup[j].map(function (p) {
+        var cek = String(p.id) === String(dipilih || terakhir);
+        return '<label class="pos-item ' + j + '"><input type="radio" name="pos_id" value="' + p.id + '" required' + (cek ? ' checked' : '') + '>' +
+          '<span class="pos-ic">' + (j === 'masuk' ? '⬇' : '⬆') + '</span>' +
+          '<span class="pos-info"><b>' + esc(p.nama) + '</b><small>' + (j === 'masuk' ? 'Foto plat, cetak tiket' : 'Scan tiket, terima bayar') + (p.keterangan ? ' · ' + esc(p.keterangan) : '') + '</small>' +
+          (p.dipakai_oleh && p.dipakai_oleh.length ? '<em>Sedang dibuka: ' + esc(p.dipakai_oleh.join(', ')) + '</em>' : '') + '</span></label>';
+      }).join('') + '</div>';
+    }).join('');
+    if (daftar.length === 1) box.querySelector('input').checked = true;
+  }
+
   $('#f-pos').addEventListener('submit', function (ev) {
     ev.preventDefault();
-    var f = ev.target, pos = (f.querySelector('input[name=pos]:checked') || {}).value;
-    if (!pos) return toast('Pilih Pos Masuk atau Pos Keluar', 'bad');
-    save('pos_nama', f.pos_nama.value.trim()); save('pos_terakhir', pos);
-    api('shift.buka', { body: { pos: pos, pos_nama: f.pos_nama.value.trim() } }).then(function (s) {
+    var f = ev.target, body;
+    if ((S.posTersedia || []).length) {
+      var posId = (f.querySelector('input[name=pos_id]:checked') || {}).value;
+      if (!posId) return toast('Pilih pos tempat Anda bertugas', 'bad');
+      save('pos_id_terakhir', posId);
+      body = { pos_id: +posId };
+    } else {
+      var pos = (f.querySelector('input[name=pos]:checked') || {}).value;
+      if (!pos) return toast('Pilih Pos Masuk atau Pos Keluar', 'bad');
+      save('pos_nama', f.pos_nama.value.trim()); save('pos_terakhir', pos);
+      body = { pos: pos, pos_nama: f.pos_nama.value.trim() };
+    }
+    var btn = $('#btn-buka-shift'); btn.disabled = true;
+    api('shift.buka', { body: body }).then(function (s) {
       S.shift = s; simpanSesi(); masukAplikasi();
-      toast('Shift dibuka. Selamat bertugas!', 'ok');
-    }).catch(function (e) { toast(e.message, 'bad'); });
+      toast('Shift dibuka di ' + s.pos_nama + '. Selamat bertugas!', 'ok');
+    }).catch(function (e) {
+      toast(e.message, 'bad', 4000);
+      // Daftar pos berubah di admin (pos dinonaktifkan / penugasan diubah): segarkan pilihan
+      if (e.kode === 'pos_wajib' || e.kode === 'pos_tidak_boleh') api('me').then(function (d) { S.posTersedia = d.pos_tersedia || []; simpanSesi(); renderPilihanPos(); }).catch(function () {});
+    }).then(function () { btn.disabled = false; });
   });
 
   function logout() {

@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="struk.css?v=13">
-<link rel="stylesheet" href="app.css?v=13">
+<link rel="stylesheet" href="struk.css?v=14">
+<link rel="stylesheet" href="app.css?v=14">
 </head>
 <body>
 
@@ -32,14 +32,19 @@
     <p class="muted">Halo, <b id="pos-nama-petugas"></b></p>
     <h2 class="h-big">Pilih pos untuk memulai shift</h2>
     <form id="f-pos" class="stack">
-      <div class="pos-pick">
-        <label class="pos-card masuk"><input type="radio" name="pos" value="masuk" required>
-          <span class="pos-ic">⬇</span><b>Pos Masuk</b><small>Foto plat, cetak tiket</small></label>
-        <label class="pos-card keluar"><input type="radio" name="pos" value="keluar" required>
-          <span class="pos-ic">⬆</span><b>Pos Keluar</b><small>Scan tiket, terima bayar</small></label>
+      <!-- Daftar pos dari admin (Pos & Gerbang) -->
+      <div id="pos-daftar" class="pos-daftar" hidden></div>
+      <!-- Cara lama: dipakai bila admin belum membuat daftar pos -->
+      <div id="pos-lama" class="stack">
+        <div class="pos-pick">
+          <label class="pos-card masuk"><input type="radio" name="pos" value="masuk">
+            <span class="pos-ic">⬇</span><b>Pos Masuk</b><small>Foto plat, cetak tiket</small></label>
+          <label class="pos-card keluar"><input type="radio" name="pos" value="keluar">
+            <span class="pos-ic">⬆</span><b>Pos Keluar</b><small>Scan tiket, terima bayar</small></label>
+        </div>
+        <label class="field">Nama pos / gerbang<input name="pos_nama" placeholder="mis. Gerbang Utara" maxlength="50"></label>
       </div>
-      <label class="field">Nama pos / gerbang<input name="pos_nama" placeholder="mis. Gerbang Utara" maxlength="50"></label>
-      <button class="btn primary xl">Buka Shift</button>
+      <button class="btn primary xl" id="btn-buka-shift">Buka Shift</button>
     </form>
     <button class="btn ghost block" id="btn-logout-pos" style="margin-top:24px">Keluar akun</button>
   </div>
@@ -188,11 +193,11 @@
 
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/html5-qrcode.min.js"></script>
-<script src="versi.js?v=13"></script>
+<script src="versi.js?v=14"></script>
 <script src="js/tarif.js"></script>
-<script src="js/resi.js?v=13"></script>
-<script src="js/printer.js?v=13"></script>
+<script src="js/resi.js?v=14"></script>
+<script src="js/printer.js?v=14"></script>
 <script src="js/outbox.js"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>

@@ -221,3 +221,19 @@ input:focus, select:focus { outline: none; border-color: var(--pos); box-shadow:
 .banner-printer span { flex: 1; min-width: 0; }
 .banner-printer button { flex: none; border: 0; border-radius: 9px; padding: 8px 12px; font: inherit; font-weight: 700; background: rgba(0,0,0,.12); color: inherit; min-height: 38px; }
 .banner-printer.info { background: #dcebff; color: #0b4a9e; }
+
+/* Pilih pos dari daftar admin */
+.pos-daftar { display: grid; gap: 18px; }
+.pos-grup { display: grid; gap: 10px; }
+.pos-grup h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0; }
+.pos-item { position: relative; display: flex; gap: 14px; align-items: center; background: var(--surface); border: 2px solid var(--border); border-radius: 16px; padding: 14px; cursor: pointer; }
+.pos-item input { position: absolute; opacity: 0; }
+.pos-item .pos-ic { margin: 0; flex: none; }
+.pos-item.masuk .pos-ic { background: #0f6fde; }
+.pos-item.keluar .pos-ic { background: #0e8a5f; }
+.pos-item .pos-info { display: grid; gap: 2px; min-width: 0; }
+.pos-item b { font-size: 17px; }
+.pos-item small { color: var(--muted); }
+.pos-item em { font-style: normal; font-size: 12.5px; font-weight: 700; color: var(--warn); }
+.pos-item:has(input:checked) { border-color: var(--text); box-shadow: 0 0 0 2px var(--text) inset; }
+.pos-item:has(input:focus-visible) { outline: 3px solid var(--primary); outline-offset: 2px; }

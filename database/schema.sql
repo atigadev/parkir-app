@@ -37,18 +37,45 @@ CREATE TABLE IF NOT EXISTS petugas_token (
   CONSTRAINT fk_token_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS pos (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  nama        VARCHAR(50) NOT NULL,
+  jenis       ENUM('masuk','keluar') NOT NULL,
+  keterangan  VARCHAR(120) NULL,
+  aktif       TINYINT(1) NOT NULL DEFAULT 1,
+  urutan      INT NOT NULL DEFAULT 0,
+  dibuat      DATETIME NOT NULL,
+  UNIQUE KEY uk_nama (nama)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS pos_petugas (
+  pos_id      INT UNSIGNED NOT NULL,
+  petugas_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (pos_id, petugas_id),
+  KEY idx_petugas (petugas_id),
+  CONSTRAINT fk_pp_pos FOREIGN KEY (pos_id) REFERENCES pos(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pp_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS shift (
   id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   petugas_id         INT UNSIGNED NOT NULL,
   pos                ENUM('masuk','keluar') NOT NULL,
   pos_nama           VARCHAR(50) NOT NULL DEFAULT '',
+  pos_id             INT UNSIGNED NULL,          -- pos dari daftar admin (NULL = isian bebas versi lama)
   waktu_buka         DATETIME NOT NULL,
   waktu_tutup        DATETIME NULL,
   total_cash_sistem  INT NULL,
   total_cash_setor   INT NULL,
   selisih            INT NULL,
+  setor_susulan      INT NOT NULL DEFAULT 0,   -- setoran susulan untuk menutup kekurangan
+  selisih_status     VARCHAR(20) NULL,          -- NULL = belum ditindaklanjuti | lunas | ditanggung | dihapuskan | dikembalikan
+  selisih_catatan    VARCHAR(255) NULL,
+  selisih_oleh       INT UNSIGNED NULL,
+  selisih_at         DATETIME NULL,
   catatan            VARCHAR(255) NULL,
   KEY idx_petugas_open (petugas_id, waktu_tutup),
+  KEY idx_pos_terbuka (pos_id, waktu_tutup),
   CONSTRAINT fk_shift_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id)
 ) ENGINE=InnoDB;
 
@@ -177,4 +204,4 @@ INSERT IGNORE INTO pengaturan (kunci, nilai) VALUES
  ('footer_resi',     'Simpan tiket ini dengan baik\nJangan tinggalkan tiket & barang berharga di kendaraan\nKehilangan/kerusakan barang bukan tanggung jawab pengelola'),
  ('footer_struk',    'Terima kasih atas kunjungan Anda'),
  ('telepon_lokasi',  ''),
- ('skema_versi',     '5');
+ ('skema_versi',     '7');

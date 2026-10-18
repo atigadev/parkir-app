@@ -13,7 +13,7 @@
  */
 declare(strict_types=1);
 
-const SKEMA_VERSI = 5;
+const SKEMA_VERSI = 7;
 
 function kolom_ada(string $tabel, string $kolom): bool
 {
@@ -39,6 +39,31 @@ CREATE TABLE IF NOT EXISTS petugas_token (
   UNIQUE KEY uk_token (token_hash),
   KEY idx_petugas (petugas_id),
   CONSTRAINT fk_token_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
+) ENGINE=InnoDB
+SQL;
+
+/** Daftar pos/gerbang & penugasan petugas (sama dengan schema.sql & migrasi.sql). */
+const SQL_POS = <<<'SQL'
+CREATE TABLE IF NOT EXISTS pos (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  nama        VARCHAR(50) NOT NULL,
+  jenis       ENUM('masuk','keluar') NOT NULL,
+  keterangan  VARCHAR(120) NULL,
+  aktif       TINYINT(1) NOT NULL DEFAULT 1,
+  urutan      INT NOT NULL DEFAULT 0,
+  dibuat      DATETIME NOT NULL,
+  UNIQUE KEY uk_nama (nama)
+) ENGINE=InnoDB
+SQL;
+
+const SQL_POS_PETUGAS = <<<'SQL'
+CREATE TABLE IF NOT EXISTS pos_petugas (
+  pos_id      INT UNSIGNED NOT NULL,
+  petugas_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (pos_id, petugas_id),
+  KEY idx_petugas (petugas_id),
+  CONSTRAINT fk_pp_pos FOREIGN KEY (pos_id) REFERENCES pos(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pp_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB
 SQL;
 
@@ -129,6 +154,25 @@ function langkah_migrasi(): array
             if (tambah_kolom('petugas', 'antrean_offline', 'INT NULL AFTER app_versi_at')) $ubah[] = 'petugas.antrean_offline';
             if (tambah_kolom('petugas', 'antrean_sejak', 'DATETIME NULL AFTER antrean_offline')) $ubah[] = 'petugas.antrean_sejak';
             if (tambah_kolom('petugas', 'jam_selisih_detik', 'INT NULL AFTER antrean_sejak')) $ubah[] = 'petugas.jam_selisih_detik';
+            return $ubah;
+        },
+        // v6: tindak lanjut selisih setoran (setoran susulan / ditanggung petugas / dihapuskan / dikembalikan)
+        6 => function (): array {
+            $ubah = [];
+            if (tambah_kolom('shift', 'setor_susulan', 'INT NOT NULL DEFAULT 0 AFTER selisih')) $ubah[] = 'shift.setor_susulan';
+            if (tambah_kolom('shift', 'selisih_status', 'VARCHAR(20) NULL AFTER setor_susulan')) $ubah[] = 'shift.selisih_status';
+            if (tambah_kolom('shift', 'selisih_catatan', 'VARCHAR(255) NULL AFTER selisih_status')) $ubah[] = 'shift.selisih_catatan';
+            if (tambah_kolom('shift', 'selisih_oleh', 'INT UNSIGNED NULL AFTER selisih_catatan')) $ubah[] = 'shift.selisih_oleh';
+            if (tambah_kolom('shift', 'selisih_at', 'DATETIME NULL AFTER selisih_oleh')) $ubah[] = 'shift.selisih_at';
+            return $ubah;
+        },
+        // v7: daftar pos/gerbang yang diatur admin & penugasan petugas per pos
+        7 => function (): array {
+            $ubah = [];
+            if (!tabel_ada('pos')) { db()->exec(SQL_POS); $ubah[] = 'tabel pos'; }
+            if (!tabel_ada('pos_petugas')) { db()->exec(SQL_POS_PETUGAS); $ubah[] = 'tabel pos_petugas'; }
+            if (tambah_kolom('shift', 'pos_id', 'INT UNSIGNED NULL AFTER pos_nama')) $ubah[] = 'shift.pos_id';
+            if (tambah_indeks('shift', 'idx_pos_terbuka', 'INDEX idx_pos_terbuka (pos_id, waktu_tutup)')) $ubah[] = 'indeks shift per pos';
             return $ubah;
         },
     ];

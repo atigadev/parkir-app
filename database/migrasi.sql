@@ -62,9 +62,40 @@ CALL parkit_tambah_kolom('petugas', 'antrean_offline',   'INT NULL AFTER app_ver
 CALL parkit_tambah_kolom('petugas', 'antrean_sejak',     'DATETIME NULL AFTER antrean_offline');
 CALL parkit_tambah_kolom('petugas', 'jam_selisih_detik', 'INT NULL AFTER antrean_sejak');
 
+-- v6: tindak lanjut selisih setoran -----------------------------------------------------------
+CALL parkit_tambah_kolom('shift', 'setor_susulan',   'INT NOT NULL DEFAULT 0 AFTER selisih');
+CALL parkit_tambah_kolom('shift', 'selisih_status',  'VARCHAR(20) NULL AFTER setor_susulan');
+CALL parkit_tambah_kolom('shift', 'selisih_catatan', 'VARCHAR(255) NULL AFTER selisih_status');
+CALL parkit_tambah_kolom('shift', 'selisih_oleh',    'INT UNSIGNED NULL AFTER selisih_catatan');
+CALL parkit_tambah_kolom('shift', 'selisih_at',      'DATETIME NULL AFTER selisih_oleh');
+
+-- v7: daftar pos/gerbang & penugasan petugas -----------------------------------------------
+CREATE TABLE IF NOT EXISTS pos (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  nama        VARCHAR(50) NOT NULL,
+  jenis       ENUM('masuk','keluar') NOT NULL,
+  keterangan  VARCHAR(120) NULL,
+  aktif       TINYINT(1) NOT NULL DEFAULT 1,
+  urutan      INT NOT NULL DEFAULT 0,
+  dibuat      DATETIME NOT NULL,
+  UNIQUE KEY uk_nama (nama)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS pos_petugas (
+  pos_id      INT UNSIGNED NOT NULL,
+  petugas_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (pos_id, petugas_id),
+  KEY idx_petugas (petugas_id),
+  CONSTRAINT fk_pp_pos FOREIGN KEY (pos_id) REFERENCES pos(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pp_petugas FOREIGN KEY (petugas_id) REFERENCES petugas(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+CALL parkit_tambah_kolom('shift', 'pos_id', 'INT UNSIGNED NULL AFTER pos_nama');
+SET @parkit_sql = IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'shift' AND INDEX_NAME = 'idx_pos_terbuka') = 0,
+  'ALTER TABLE shift ADD INDEX idx_pos_terbuka (pos_id, waktu_tutup)', 'SELECT 1');
+PREPARE parkit_stmt FROM @parkit_sql; EXECUTE parkit_stmt; DEALLOCATE PREPARE parkit_stmt;
+
 -- Catat versi skema (tidak pernah menurunkan versi yang lebih tinggi) --------------------------
-INSERT INTO pengaturan (kunci, nilai) VALUES ('skema_versi', '5')
-  ON DUPLICATE KEY UPDATE nilai = GREATEST(CAST(nilai AS UNSIGNED), 5);
+INSERT INTO pengaturan (kunci, nilai) VALUES ('skema_versi', '7')
+  ON DUPLICATE KEY UPDATE nilai = GREATEST(CAST(nilai AS UNSIGNED), 7);
 
 DROP PROCEDURE IF EXISTS parkit_tambah_kolom;
 

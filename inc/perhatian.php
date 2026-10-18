@@ -27,8 +27,17 @@ function daftar_perhatian(): array
             'Nominal di HP berbeda dari tagihan server' . ((int)$r['kurang'] > 0 ? ', total kurang ' . rupiah($r['kurang']) : '') . '. Cocokkan dengan setoran petugas.',
             "transaksi.php?status=offline_selisih&dari=$tujuhHari");
     }
-    $r = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih), 0) total FROM shift WHERE pos = 'keluar' AND waktu_tutup >= ? AND selisih < 0", [$tujuhHari]);
-    if ((int)$r['n']) $tambah('merah', $r['n'] . ' shift kurang setor (7 hari)', 'Total kekurangan ' . rupiah(-(int)$r['total']) . '.', "shift.php?dari=$tujuhHari");
+    if (kolom_tersedia('shift', 'selisih_status')) {
+        // Kekurangan yang belum tuntas (belum lunas / belum diputuskan) tetap muncul sampai ditindaklanjuti.
+        $r = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih + setor_susulan), 0) total FROM shift
+            WHERE pos = 'keluar' AND waktu_tutup IS NOT NULL AND selisih + setor_susulan < 0 AND (selisih_status IS NULL OR selisih_status = 'sebagian')");
+        if ((int)$r['n']) $tambah('merah', $r['n'] . ' shift kurang setor belum ditindaklanjuti', 'Sisa kekurangan ' . rupiah(-(int)$r['total']) . '. Catat setoran susulan atau keputusan di Shift & Setoran.', 'shift.php?selisih=terbuka');
+        $n = (int)q_val("SELECT COUNT(*) FROM shift WHERE pos = 'keluar' AND waktu_tutup IS NOT NULL AND selisih > 0 AND selisih_status IS NULL");
+        if ($n) $tambah('kuning', "$n shift lebih setor belum ditindaklanjuti", 'Kembalikan kelebihan ke petugas atau catat masuk kas.', 'shift.php?selisih=terbuka');
+    } else {
+        $r = q_one("SELECT COUNT(*) n, COALESCE(SUM(selisih), 0) total FROM shift WHERE pos = 'keluar' AND waktu_tutup >= ? AND selisih < 0", [$tujuhHari]);
+        if ((int)$r['n']) $tambah('merah', $r['n'] . ' shift kurang setor (7 hari)', 'Total kekurangan ' . rupiah(-(int)$r['total']) . '.', "shift.php?dari=$tujuhHari");
+    }
     if (kolom_tersedia('kendaraan_masuk', 'catatan_sistem')) {
         $n = (int)q_val('SELECT COUNT(*) FROM kendaraan_masuk WHERE catatan_sistem IS NOT NULL AND waktu_masuk >= ?', [$tujuhHari]);
         if ($n) $tambah('kuning', "$n tiket offline berjam janggal (7 hari)", 'Waktu masuk dari HP di masa depan atau sebelum shift dibuka, sudah dikoreksi sistem.', "transaksi.php?status=waktu_dikoreksi&dari=$tujuhHari");
